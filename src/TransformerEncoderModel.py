@@ -3,6 +3,8 @@ import math
 import torch
 import torch.nn as nn
 
+from src.tokenizer import tokenizer
+
 
 class PositionalEncoding(nn.Module):
     def __init__(self, embedding_dim, max_len=5000):
@@ -25,3 +27,36 @@ class PositionalEncoding(nn.Module):
         return x + self.pe[: x.size(0)]
 
 
+class TransformerEncoderModel(nn.Module):
+    def __init__(
+            self,
+            vocab_size,
+            dimensions=512,
+            nhead=8,
+            nhid=2048,
+            nlayers=6,
+            dropout=0.1,
+    ):
+        super().__init__()
+        self.embedding = nn.Embedding(
+            vocab_size,
+            dimensions,
+            padding_idx=tokenizer.token_to_id("[PAD]")
+        )
+        self.pos_encoder = PositionalEncoding(dimensions)
+        encoder_layer = nn.TransformerEncoderLayer(dimensions, nhead, nhid, dropout)
+        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=nlayers)
+        self.d_model = dimensions
+
+    def forward(self, src_ids, src_mask):
+        """
+        :param src_ids: integer tensor [batch x seq_len]
+        :param src_mask: [batch x seq_len x dimensions] floats
+        :return: scale by \sqrt{dimensions}
+        """
+        x = self.embedding(src_ids).transpose(0, 1) * math.sqrt(self.d_model)
+        x = self.pos_encoder(x)
+        output = self.encoder(x, src_key_padding_mask=~(src_mask.bool()))
+        # output: (seq_len, batch, dimensions), positional encoding
+        # Transpose to [batch x seq_len x dimensions]
+        return output.transpose(0, 1)
