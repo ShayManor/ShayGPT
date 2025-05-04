@@ -4,7 +4,7 @@ from torch.amp import autocast, GradScaler
 from torch.utils.data import DataLoader
 from TextDataset import TextDataset
 from TransformerEncoderModel import TransformerEncoderModel
-from src.GPT import GPTConfig, GPT
+from GPT import GPTConfig, GPT
 from tokenizer import tokenizer
 
 
