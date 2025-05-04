@@ -1,64 +1,67 @@
-import matplotlib
-import torch
-import matplotlib.pyplot as plt
-from torch import nn
+import os
+import torch, torch.nn as nn
+from torch.cuda.amp import autocast, GradScaler
 from torch.utils.data import DataLoader
-
 from src.TextDataset import TextDataset
 from src.TransformerEncoderModel import TransformerEncoderModel
 from src.tokenizer import tokenizer
 
 
-def train(data, epochs):
-    model = TransformerEncoderModel(tokenizer.get_vocab_size())
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
-    criterion = nn.CrossEntropyLoss(ignore_index=tokenizer.token_to_id("[PAD]"))
-    dataset = TextDataset(data, max_len=128)
-    loader = DataLoader(dataset, batch_size=32, shuffle=True)
+def train(csv_path: str,
+          epochs: int = 3,
+          init_batch: int = 64,
+          lr: float = 2e-4):
+    torch.backends.cudnn.benchmark = True
+    torch.set_float32_matmul_precision("medium")
 
-    model.train()
-    plt.ion()
-    fig, ax = plt.subplots()
-    ax.set_title("Training loss (per batch)")
-    ax.set_xlabel("Batch")
-    ax.set_ylabel("Loss")
-    line, = ax.plot([], [], lw=2)
-    loss_history, x_history = [], []
-    step = 0
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print("Using device:", device)
 
-    for epoch in range(epochs):
+    dataset = TextDataset(csv_path, max_len=128)
+    loader = DataLoader(dataset,
+                        batch_size=init_batch,
+                        shuffle=True,
+                        num_workers=os.cpu_count() // 2,
+                        pin_memory=True,
+                        persistent_workers=True)
+
+    model = TransformerEncoderModel(tokenizer.get_vocab_size()).to(device)
+    model = torch.compile(model)
+    opt = torch.optim.AdamW(model.parameters(), lr=lr)
+    crit = nn.CrossEntropyLoss(ignore_index=tokenizer.token_to_id("[PAD]"))
+    scaler = GradScaler()
+
+    global_step = 0
+    for epoch in range(1, epochs + 1):
         for batch_ids, batch_att in loader:
-            # [:, :-1] removes last column
-            input = batch_ids[:, :-1]
+            batch_ids = batch_ids.to(device, non_blocking=True)
+            batch_att = batch_att.to(device, non_blocking=True)
+
+            inp = batch_ids[:, :-1]
             tgt = batch_ids[:, 1:]
             att = batch_att[:, :-1]
-            out = model(input, att)
-            # tie weights for LM head
-            logits = out @ model.embedding.weight.T
-            loss = criterion(logits.view(-1, logits.size(-1)), tgt.reshape(-1))
 
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+            with autocast():
+                logits = model(inp, att) @ model.embedding.weight.T
+                loss = crit(logits.view(-1, logits.size(-1)),
+                            tgt.reshape(-1))
 
-            loss_history.append(loss.item())
-            x_history.append(step)
-            line.set_data(x_history, loss_history)
-            ax.relim()
-            ax.autoscale_view()
-            fig.canvas.draw_idle()
-            fig.canvas.flush_events()
-            plt.pause(0.001)
-            step += 1
+            scaler.scale(loss).backward()
+            scaler.step(opt)
+            scaler.update()
+            opt.zero_grad(set_to_none=True)
 
-        print(f"Epoch {epoch}  Loss {loss.item():.4f}")
+            if global_step % 100 == 0:
+                print(f"epoch {epoch} step {global_step} loss {loss.item():.4f}")
+            global_step += 1
 
-    emb_matrix = model.embedding.weight.data.cpu().numpy()
-    torch.save(emb_matrix, "embed_matrix.pth")
-    torch.save(model.state_dict(), "transformer_encoder.pth")
-    print("Model & embedding matrix saved.")
+        torch.save(model.state_dict(),
+                   f"transformer_encoder_e{epoch}.pth")
+
+    torch.save(model.embedding.weight.cpu(), "embed_matrix.pth")
+    print("⚡ Training done.  Final loss:", loss.item())
 
 
 
-if __name__ == '__main__':
-    train('data/AI_Human.csv', 6)
+if __name__ == "__main__":
+    train("data/AI_Human.csv", epochs=6)
