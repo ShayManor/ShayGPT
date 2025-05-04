@@ -3,12 +3,7 @@ from tokenizer import tokenizer
 from GPT import GPTConfig, GPT
 
 cfg = GPTConfig(
-    vocab_size=tokenizer.get_vocab_size(),
-    n_layer=16,
-    n_head=24,
-    d_model=1536,
-    dropout=0.1,
-    max_len=1024)
+    vocab_size=tokenizer.get_vocab_size())
 model = GPT(cfg)
 total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 print(f"Total parameters: {total_params:,} ~= {total_params / 1e6:.2f} M parameters")

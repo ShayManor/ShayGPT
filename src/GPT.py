@@ -6,9 +6,9 @@ from flash_attn.rotary import apply_rotary_emb, RotaryEmbedding
 class GPTConfig:
     def __init__(self,
                  vocab_size,
-                 n_layer=12,
-                 n_head=12,
-                 d_model=768,
+                 n_layer=18,
+                 n_head=18,
+                 d_model=1224,
                  dropout=0.1,
                  max_len=512):
         self.__dict__.update(locals())
