@@ -1,49 +1,65 @@
 import os
 import torch, torch.nn as nn
-from torch.amp import autocast, GradScaler
+from torch.amp import autocast
 from torch.utils.data import DataLoader
+import torch.distributed as dist
 from TextDataset import TextDataset
-from TransformerEncoderModel import TransformerEncoderModel
 from GPT import GPTConfig, GPT
-from tokenizer import tokenizer
+from tokenizer import tokenizer, collate_batch
+import bitsandbytes as bnb
+from transformers import get_cosine_schedule_with_warmup
 
 
 def train(csv_path,
           epochs: int = 3,
-          init_batch: int = 32,
-          lr: float = 1e-4):
+          batch_size: int = 32,
+          lr: float = 1.5e-4):
+    dist.init_process_group("nccl")
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.benchmark = True
     torch.set_float32_matmul_precision("medium")
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    local_rank = int(os.environ["LOCAL_RANK"])
+    torch.cuda.set_device(local_rank)
+    device = torch.device("cuda", local_rank)
     print("Using device:", device)
 
-    dataset = TextDataset(csv_path, max_len=256)
+    dataset = TextDataset(csv_path, max_len=512)
+    bos_id, eos_id, pad_id = (tokenizer.token_to_id(t) for t in ["[BOS]", "[EOS]", "[PAD]"])
+    sampler = torch.utils.data.distributed.DistributedSampler(
+        dataset, shuffle=True)
     loader = DataLoader(dataset,
-                        batch_size=init_batch,
-                        shuffle=True,
-                        num_workers=0,
-                        pin_memory=True,
-                        )
+                        batch_size=batch_size,
+                        sampler=sampler,
+                        num_workers=4,
+                        collate_fn=lambda ex: collate_batch(ex, bos_id, eos_id, pad_id))
+
     cfg = GPTConfig(vocab_size=tokenizer.get_vocab_size())
     model = GPT(cfg).to(device)
-    opt = torch.optim.AdamW(model.parameters(), lr=lr, betas=(0.9, 0.95), weight_decay=0.02)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=len(loader) * epochs, eta_min=lr / 50)
-    scaler = GradScaler(init_scale=2 ** 8, growth_interval=50)
+    model = torch.compile(model, mode="max-autotune")
+    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank])
+    opt = bnb.optim.AdamW8bit(model.parameters(),
+                              lr=lr,
+                              betas=(0.9, 0.95),
+                              weight_decay=0.1,
+                              eps=1e-8)
+    total_steps = len(loader) * epochs
+    warmup_steps = int(0.02 * total_steps)
+    scheduler = get_cosine_schedule_with_warmup(opt, warmup_steps, total_steps)
+    # scaler = GradScaler(init_scale=2 ** 8, growth_interval=50)
     pad_id = tokenizer.token_to_id("[PAD]")
     if pad_id is None:
         raise RuntimeError("PAD token not found in tokenizer!")
     global_step = 0
     for epoch in range(epochs):
+        sampler.set_epoch(epoch)
         for step, (ids, att) in enumerate(loader):
             ids = ids.to(device, non_blocking=True)
-            att = att.to(device, non_blocking=True)
+            # att = att.to(device, non_blocking=True)
             input = ids[:, :-1]
             target = ids[:, 1:]
-            with autocast(device_type="cuda", dtype=torch.float16):
+            with autocast(device_type="cuda", dtype=torch.bfloat16):
                 logits = model(input)
-
                 flat_logits = logits.reshape(-1, logits.size(-1))
                 flat_target = target.reshape(-1)
 
@@ -53,26 +69,22 @@ def train(csv_path,
                     ignore_index=pad_id,
                     label_smoothing=0.0,
                 )
-            scaler.scale(loss).backward()
-            scaler.step(opt)
-            scaler.update()
-            opt.zero_grad(set_to_none=True)
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            opt.step()
             scheduler.step()
+            opt.zero_grad(set_to_none=True)
 
-            if global_step % 100 == 0:
-                print(f"epoch {epoch} step {global_step} loss {loss.item():.4f} lr = {lr}")
+            if global_step % 1000 == 0 and local_rank == 0:
+                print(f"epoch {epoch} step {global_step} loss {loss.item():.4f} lr = {scheduler.get_last_lr()[0]:.2e}")
             global_step += 1
+        if local_rank == 0:
+            torch.save(model.state_dict(), f"gpt_epoch{epoch}.pth")
 
-        torch.save(model.state_dict(), f"transformer_encoder_e{epoch}.pth")
-
-    torch.save(model.embedding.weight.cpu(), "embed_matrix.pth")
+    torch.save(model.module.tok_emb.weight.cpu(), "embed_matrix.pth")
     print("⚡ Training done.  Final loss:", loss.item())
 
 
 if __name__ == "__main__":
-    shards = [
-        "redpajama-1B/c4_sample.jsonl",
-        "redpajama-1B/cc_2023-06_sample.jsonl",
-        "redpajama-1B/cc_2020-05_sample.jsonl",
-    ]
+    shards = [x for x in os.listdir('redpajama') if x.endswith('jsonl')]
     train(shards, epochs=10)

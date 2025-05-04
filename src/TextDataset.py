@@ -9,7 +9,7 @@ from tokenizer import tokenizer
 
 
 class TextDataset(Dataset):
-    def __init__(self, path, max_len=128):
+    def __init__(self, path, max_len=512):
         self.texts = full_clean(path)
         self.tokenizer = tokenizer
         self.max_len = int(max_len)

@@ -1,15 +1,16 @@
 import torch
 from torch import nn
-
+from flash_attn.modules.mha import MHA
+from flash_attn.rotary import apply_rotary_emb, RotaryEmbedding
 
 class GPTConfig:
     def __init__(self,
                  vocab_size,
-                 n_layer=6,
-                 n_head=8,
-                 d_model=512,
+                 n_layer=12,
+                 n_head=12,
+                 d_model=768,
                  dropout=0.1,
-                 max_len=1024):
+                 max_len=512):
         self.__dict__.update(locals())
 
 
@@ -18,7 +19,7 @@ class GPT(nn.Module):
         super().__init__()
         self.cfg = cfg
         self.tok_emb = nn.Embedding(cfg.vocab_size, cfg.d_model)
-        self.pos_emb = nn.Parameter(torch.zeros(1, cfg.max_len, cfg.d_model))
+        self.rotary = RotaryEmbedding(cfg.d_model // cfg.n_head)
 
         self.blocks = nn.ModuleList([
             self._build_block() for _ in range(cfg.n_layer)
@@ -37,12 +38,12 @@ class GPT(nn.Module):
         d, h, drop = self.cfg.d_model, self.cfg.n_head, self.cfg.dropout
         return nn.ModuleDict({
             "ln1": nn.LayerNorm(d),
-            "attn": nn.MultiheadAttention(d, h, dropout=drop, batch_first=True),
+            "attn": MHA(d, h, dropout=drop, causal=True, bias=False),  # flash‑attn
             "ln2": nn.LayerNorm(d),
             "mlp": nn.Sequential(
-                nn.Linear(d, 4 * d),
+                nn.Linear(d, 4*d, bias=False),
                 nn.GELU(),
-                nn.Linear(4 * d, d),
+                nn.Linear(4*d, d, bias=False),
                 nn.Dropout(drop)
             )
         })
@@ -53,20 +54,12 @@ class GPT(nn.Module):
             if getattr(m, "bias", None) is not None:
                 nn.init.zeros_(m.bias)
 
-    # ---------- forward ----------
     def forward(self, idx):        # idx: [B,T]
         B, T = idx.shape
         assert T <= self.cfg.max_len
-        x = self.tok_emb(idx) + self.pos_emb[:, :T]      # [B,T,d]
-
-        attn_mask = self.causal_mask[:T, :T]             # [T,T], on same device later
+        x = self.tok_emb(idx * (self.cfg.d_model ** 0.5))
         for blk in self.blocks:
-            x = x + blk["attn"](
-                    blk["ln1"](x),
-                    blk["ln1"](x),
-                    blk["ln1"](x),
-                    attn_mask=attn_mask
-                )[0]
+            x = x + blk["attn"](blk["ln1"](x))
             x = x + blk["mlp"](blk["ln2"](x))
         x = self.ln_f(x)
-        return self.lm_head(x)                           # [B,T,V]
+        return self.lm_head(x)
