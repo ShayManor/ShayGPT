@@ -42,9 +42,13 @@ def train(csv_path,
             target = idx[:, 1:]
             with autocast(device_type="cuda", dtype=torch.float16):
                 logits = model(input)
+
+                flat_logits = logits.reshape(-1, logits.size(-1))
+                flat_target = target.reshape(-1)
+
                 loss = nn.functional.cross_entropy(
-                    logits.view(-1, logits.size(-1)),
-                    target.view(-1),
+                    flat_logits,
+                    flat_target,
                     ignore_index=pad_id,
                     label_smoothing=0.0,
                 )
