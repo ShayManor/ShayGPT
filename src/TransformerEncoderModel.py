@@ -24,7 +24,8 @@ class PositionalEncoding(nn.Module):
 
     def forward(self, x):
         # x shape: (seq_len, batch, d_model)
-        return x + self.pe[: x.size(0)]
+        seq_len = x.size(0)
+        return x + self.pe[:seq_len].unsqueeze(1)
 
 
 class TransformerEncoderModel(nn.Module):

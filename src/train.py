@@ -30,6 +30,7 @@ def train(data, epochs):
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+            print(f"Batch Ended")
         print(f"Epoch {epoch}  Loss {loss.item():.4f}")
 
     emb_matrix = model.embedding.weight.data.cpu().numpy()
