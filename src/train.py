@@ -2,9 +2,9 @@ import os
 import torch, torch.nn as nn
 from torch.cuda.amp import autocast, GradScaler
 from torch.utils.data import DataLoader
-from src.TextDataset import TextDataset
-from src.TransformerEncoderModel import TransformerEncoderModel
-from src.tokenizer import tokenizer
+from TextDataset import TextDataset
+from TransformerEncoderModel import TransformerEncoderModel
+from tokenizer import tokenizer
 
 
 def train(csv_path: str,

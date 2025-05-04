@@ -3,7 +3,7 @@ import math
 import torch
 import torch.nn as nn
 
-from src.tokenizer import tokenizer
+from tokenizer import tokenizer
 
 
 class PositionalEncoding(nn.Module):

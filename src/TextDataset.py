@@ -4,8 +4,8 @@ import torch
 from torch import float32
 from torch.utils.data import Dataset
 
-from src.clean import full_clean
-from src.tokenizer import tokenizer
+from clean import full_clean
+from tokenizer import tokenizer
 
 
 class TextDataset(Dataset):

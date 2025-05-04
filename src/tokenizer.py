@@ -8,7 +8,7 @@ if _TOKENIZER_PATH.exists():
     tokenizer = Tokenizer.from_file(str(_TOKENIZER_PATH))
 else:
     from tokenizers import models, trainers, pre_tokenizers, processors
-    from src.clean import full_clean
+    from clean import full_clean
 
     tokenizer = Tokenizer(models.BPE())
     tokenizer.pre_tokenizer = pre_tokenizers.Whitespace()
