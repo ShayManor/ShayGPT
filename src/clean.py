@@ -10,8 +10,6 @@ def full_clean(paths: Union[str, List[str]]):
         s = s.strip()
         s = " ".join(s.split())
         return s
-    if isinstance(paths, List):
-        paths = [str(paths)]
     texts = []
 
     for p in paths:
