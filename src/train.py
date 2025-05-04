@@ -10,7 +10,7 @@ from tokenizer import tokenizer
 
 def train(csv_path,
           epochs: int = 3,
-          init_batch: int = 64,
+          init_batch: int = 32,
           lr: float = 1e-4):
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.benchmark = True
@@ -19,7 +19,7 @@ def train(csv_path,
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
 
-    dataset = TextDataset(csv_path, max_len=512)
+    dataset = TextDataset(csv_path, max_len=256)
     loader = DataLoader(dataset,
                         batch_size=init_batch,
                         shuffle=True,
@@ -38,7 +38,7 @@ def train(csv_path,
             idx = idx.to(device, non_blocking=True)
             input = idx[:, :-1]
             target = idx[:, 1:]
-            with autocast(device_type="cuda", dtype=torch.float16, enabled=False):
+            with autocast(device_type="cuda", dtype=torch.float16):
                 logits = model(input)
                 loss = nn.functional.cross_entropy(
                     logits.reshape(-1, logits.size(-1)),
