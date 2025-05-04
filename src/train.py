@@ -33,7 +33,7 @@ def train(csv_path: str,
 
     global_step = 0
     for epoch in range(epochs):
-        for step, idx in enumerate(loader):
+        for step, (_, idx) in enumerate(loader):
             idx = idx.to(device, non_blocking=True)
             input = idx[:, :-1]
             target = idx[:, 1:]
