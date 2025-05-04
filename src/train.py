@@ -29,9 +29,11 @@ def train(csv_path,
     cfg = GPTConfig(vocab_size=tokenizer.get_vocab_size())
     model = GPT(cfg).to(device)
     opt = torch.optim.AdamW(model.parameters(), lr=lr, betas=(0.9, 0.95), weight_decay=0.02)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=len(loader)*epochs, eta_min=lr/50)
-    scaler = GradScaler(init_scale=2**8, growth_interval=50)
-
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=len(loader) * epochs, eta_min=lr / 50)
+    scaler = GradScaler(init_scale=2 ** 8, growth_interval=50)
+    pad_id = tokenizer.token_to_id("[PAD]")
+    if pad_id is None:
+        raise RuntimeError("PAD token not found in tokenizer!")
     global_step = 0
     for epoch in range(epochs):
         for step, (_, idx) in enumerate(loader):
@@ -41,9 +43,11 @@ def train(csv_path,
             with autocast(device_type="cuda", dtype=torch.float16):
                 logits = model(input)
                 loss = nn.functional.cross_entropy(
-                    logits.reshape(-1, logits.size(-1)),
-                    target.reshape(-1),
-                    label_smoothing=0.0)
+                    logits.view(-1, logits.size(-1)),
+                    target.view(-1),
+                    ignore_index=pad_id,
+                    label_smoothing=0.0,
+                )
             scaler.scale(loss).backward()
             scaler.step(opt)
             scaler.update()
@@ -54,11 +58,10 @@ def train(csv_path,
                 print(f"epoch {epoch} step {global_step} loss {loss.item():.4f} lr = {lr}")
             global_step += 1
 
-        torch.save(model.state_dict(),f"transformer_encoder_e{epoch}.pth")
+        torch.save(model.state_dict(), f"transformer_encoder_e{epoch}.pth")
 
     torch.save(model.embedding.weight.cpu(), "embed_matrix.pth")
     print("⚡ Training done.  Final loss:", loss.item())
-
 
 
 if __name__ == "__main__":
