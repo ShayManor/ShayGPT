@@ -8,7 +8,7 @@ from GPT import GPTConfig, GPT
 from tokenizer import tokenizer
 
 
-def train(csv_path: str,
+def train(csv_path,
           epochs: int = 3,
           init_batch: int = 64,
           lr: float = 1e-4):
@@ -62,4 +62,9 @@ def train(csv_path: str,
 
 
 if __name__ == "__main__":
-    train("data/AI_Human.csv", epochs=10)
+    shards = [
+        "redpajama-1B/c4_sample.jsonl",
+        "redpajama-1B/cc_2023-06_sample.jsonl",
+        "redpajama-1B/cc_2020-05_sample.jsonl",
+    ]
+    train(shards, epochs=10)

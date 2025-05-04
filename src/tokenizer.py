@@ -17,7 +17,12 @@ else:
         vocab_size=32_000,
         special_tokens=["[PAD]", "[UNK]", "[CLS]", "[SEP]", "[MASK]", "[BOS]"],
     )
-    texts = full_clean("data/AI_Human.csv")
+    shards = [
+        "redpajama-1B/c4_sample.jsonl",
+        "redpajama-1B/cc_2023-06_sample.jsonl",
+        "redpajama-1B/cc_2020-05_sample.jsonl",
+    ]
+    texts = full_clean(shards)
     tokenizer.train_from_iterator(texts, trainer=trainer)
 
     tokenizer.post_processor = processors.TemplateProcessing(
