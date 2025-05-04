@@ -15,7 +15,7 @@ else:
 
     trainer = trainers.BpeTrainer(
         vocab_size=32_000,
-        special_tokens=["[PAD]", "[UNK]", "[CLS]", "[SEP]", "[MASK]"],
+        special_tokens=["[PAD]", "[UNK]", "[CLS]", "[SEP]", "[MASK]", "[BOS]"],
     )
     texts = full_clean("data/AI_Human.csv")
     tokenizer.train_from_iterator(texts, trainer=trainer)

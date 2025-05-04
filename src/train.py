@@ -4,59 +4,56 @@ from torch.amp import autocast, GradScaler
 from torch.utils.data import DataLoader
 from TextDataset import TextDataset
 from TransformerEncoderModel import TransformerEncoderModel
+from src.GPT import GPTConfig, GPT
 from tokenizer import tokenizer
 
 
 def train(csv_path: str,
           epochs: int = 3,
           init_batch: int = 64,
-          lr: float = 5e-3):
+          lr: float = 1e-4):
     torch.backends.cudnn.benchmark = True
     torch.set_float32_matmul_precision("medium")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
 
-    dataset = TextDataset(csv_path, max_len=128)
+    dataset = TextDataset(csv_path, max_len=512)
     loader = DataLoader(dataset,
                         batch_size=init_batch,
                         shuffle=True,
                         num_workers=0,
                         pin_memory=True,
-                        persistent_workers=False)
-
-    model = TransformerEncoderModel(tokenizer.get_vocab_size()).to(device)
-    # model = torch.compile(model)
-    opt = torch.optim.AdamW(model.parameters(), lr=lr)
-    crit = nn.CrossEntropyLoss(ignore_index=tokenizer.token_to_id("[PAD]"))
+                        )
+    cfg = GPTConfig(vocab_size=tokenizer.get_vocab_size())
+    model = GPT(cfg).to(device)
+    opt = torch.optim.AdamW(model.parameters(), lr=lr, betas=(0.9, 0.95), weight_decay=0.02)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=len(loader)*epochs, eta_min=lr/50)
     scaler = GradScaler()
 
     global_step = 0
-    for epoch in range(1, epochs + 1):
-        for batch_ids, batch_att in loader:
-            batch_ids = batch_ids.to(device, non_blocking=True)
-            batch_att = batch_att.to(device, non_blocking=True)
-
-            inp = batch_ids[:, :-1]
-            tgt = batch_ids[:, 1:]
-            att = batch_att[:, :-1]
-
-            with autocast('cuda'):
-                logits = model(inp, att) @ model.embedding.weight.T
-                loss = crit(logits.view(-1, logits.size(-1)),
-                            tgt.reshape(-1))
-
+    for epoch in range(epochs):
+        for step, (_, idx) in enumerate(loader):
+            idx = idx.to(device, non_blocking=True)
+            input = idx[:, :-1]
+            target = idx[:, 1:]
+            with autocast(device_type="cuda", dtype=torch.float16):
+                logits = model(input)
+                loss = nn.functional.cross_entropy(
+                    logits.reshape(-1, logits.size(-1)),
+                    target.reshape(-1),
+                    label_smoothing=0.0)
             scaler.scale(loss).backward()
             scaler.step(opt)
             scaler.update()
             opt.zero_grad(set_to_none=True)
+            scheduler.step()
 
             if global_step % 100 == 0:
                 print(f"epoch {epoch} step {global_step} loss {loss.item():.4f}")
             global_step += 1
 
-        torch.save(model.state_dict(),
-                   f"transformer_encoder_e{epoch}.pth")
+        torch.save(model.state_dict(),f"transformer_encoder_e{epoch}.pth")
 
     torch.save(model.embedding.weight.cpu(), "embed_matrix.pth")
     print("⚡ Training done.  Final loss:", loss.item())
@@ -64,4 +61,4 @@ def train(csv_path: str,
 
 
 if __name__ == "__main__":
-    train("data/AI_Human.csv", epochs=6)
+    train("data/AI_Human.csv", epochs=10)
