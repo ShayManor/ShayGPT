@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader
 import torch.distributed as dist
 from TextDataset import TextDataset
 from GPT import GPTConfig, GPT
-from tokenizer import tokenizer, collate_batch
+from tokenizer import tokenizer, collate_batch, BOS_ID, EOS_ID, PAD_ID
 import bitsandbytes as bnb
 from transformers import get_cosine_schedule_with_warmup
 
@@ -32,7 +32,7 @@ def train(csv_path,
                         batch_size=batch_size,
                         sampler=sampler,
                         num_workers=4,
-                        collate_fn=lambda ex: collate_batch(ex, bos_id, eos_id, pad_id))
+                        collate_fn=lambda ex: collate_batch(ex, BOS_ID, EOS_ID, PAD_ID))
 
     cfg = GPTConfig(vocab_size=tokenizer.get_vocab_size())
     model = GPT(cfg).to(device)

@@ -1,25 +1,27 @@
 # src/tokenizer.py
+import itertools
 import os
 
 import torch
 from tokenizers import Tokenizer
 from pathlib import Path
+from datasets import load_dataset
 
 _TOKENIZER_PATH = Path(__file__).with_suffix(".json")
 
 
-def collate_batch(examples, bos_id, eos_id, pad_id, max_len=512):
-    # tokenize here to get variable lengths
-    batch_ids = []
-    for text in examples:
-        ids = tokenizer.encode(text).ids
-        ids = ids[:max_len - 2]
+def collate_batch(texts, bos_id, eos_id, pad_id, max_len=512):
+    # encode_batch returns a list[Encoding]
+    encodings = tokenizer.encode_batch(texts)
+    ids_list = []
+    for enc in encodings:
+        ids = enc.ids[: max_len - 2]
         ids = [bos_id] + ids + [eos_id]
-        batch_ids.append(torch.tensor(ids, dtype=torch.long))
+        ids_list.append(torch.tensor(ids, dtype=torch.long))
 
-    longest = max(x.size(0) for x in batch_ids)
+    longest = max(x.size(0) for x in ids_list)
     padded = [torch.cat([x, x.new_full((longest - x.size(0),), pad_id)])
-              for x in batch_ids]
+              for x in ids_list]
     return torch.vstack(padded)
 
 
@@ -29,16 +31,28 @@ else:
     from tokenizers import models, trainers, pre_tokenizers, processors
     from clean import full_clean
 
+
+    def pj_iter():
+        data_files = {"train": "redpajama-cc/*.jsonl.zst"}
+        ds_stream = load_dataset("json",
+                                 data_files=data_files,
+                                 streaming=True)["train"]
+        for rec in ds_stream:
+            yield rec["text"]
+
+
+    print("⏳  Training BPE tokenizer on RedPajama CC stream...")
     tokenizer = Tokenizer(models.BPE())
     tokenizer.pre_tokenizer = pre_tokenizers.Whitespace()
 
     trainer = trainers.BpeTrainer(
-        vocab_size=32_000,
+        vocab_size=50_000,
         special_tokens=["[PAD]", "[UNK]", "[BOS]", "[EOS]"]
     )
-    shards = [x for x in os.listdir('redpajama') if x.endswith('jsonl')]
-    texts = full_clean(shards)
-    tokenizer.train_from_iterator(texts, trainer=trainer)
+    sample_iter = itertools.islice(pj_iter(), 10_000_000)
+    # shards = [x for x in os.listdir('redpajama') if x.endswith('jsonl')]
+    # texts = full_clean(sample_iter)
+    tokenizer.train_from_iterator(sample_iter, trainer=trainer)
 
     tokenizer.post_processor = processors.TemplateProcessing(
         single="[BOS] $A [EOS]",
@@ -53,3 +67,6 @@ else:
     # tokenizer.enable_truncation(max_length=512)
 
     tokenizer.save(str(_TOKENIZER_PATH))
+    BOS_ID = tokenizer.token_to_id("[BOS]")
+    EOS_ID = tokenizer.token_to_id("[EOS]")
+    PAD_ID = tokenizer.token_to_id("[PAD]")
