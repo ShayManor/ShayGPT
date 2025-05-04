@@ -36,10 +36,11 @@ def train(csv_path,
         raise RuntimeError("PAD token not found in tokenizer!")
     global_step = 0
     for epoch in range(epochs):
-        for step, (_, idx) in enumerate(loader):
-            idx = idx.to(device, non_blocking=True)
-            input = idx[:, :-1]
-            target = idx[:, 1:]
+        for step, (ids, att) in enumerate(loader):
+            ids = ids.to(device, non_blocking=True)
+            att = att.to(device, non_blocking=True)
+            input = ids[:, :-1]
+            target = ids[:, 1:]
             with autocast(device_type="cuda", dtype=torch.float16):
                 logits = model(input)
 
