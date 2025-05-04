@@ -4,7 +4,7 @@ from torch.amp import autocast, GradScaler
 from torch.utils.data import DataLoader
 from TextDataset import TextDataset
 from TransformerEncoderModel import TransformerEncoderModel
-from src.GPT import GPTConfig, GPT
+from GPT import GPTConfig, GPT
 from tokenizer import tokenizer
 
 
@@ -12,6 +12,7 @@ def train(csv_path: str,
           epochs: int = 3,
           init_batch: int = 64,
           lr: float = 1e-4):
+    torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.benchmark = True
     torch.set_float32_matmul_precision("medium")
 
@@ -29,7 +30,7 @@ def train(csv_path: str,
     model = GPT(cfg).to(device)
     opt = torch.optim.AdamW(model.parameters(), lr=lr, betas=(0.9, 0.95), weight_decay=0.02)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=len(loader)*epochs, eta_min=lr/50)
-    scaler = GradScaler()
+    scaler = GradScaler(init_scale=2**8, growth_interval=50)
 
     global_step = 0
     for epoch in range(epochs):
@@ -37,7 +38,7 @@ def train(csv_path: str,
             idx = idx.to(device, non_blocking=True)
             input = idx[:, :-1]
             target = idx[:, 1:]
-            with autocast(device_type="cuda", dtype=torch.float16):
+            with autocast(device_type="cuda", dtype=torch.float16, enabled=False):
                 logits = model(input)
                 loss = nn.functional.cross_entropy(
                     logits.reshape(-1, logits.size(-1)),
@@ -50,7 +51,7 @@ def train(csv_path: str,
             scheduler.step()
 
             if global_step % 100 == 0:
-                print(f"epoch {epoch} step {global_step} loss {loss.item():.4f}")
+                print(f"epoch {epoch} step {global_step} loss {loss.item():.4f} lr = {lr}")
             global_step += 1
 
         torch.save(model.state_dict(),f"transformer_encoder_e{epoch}.pth")
