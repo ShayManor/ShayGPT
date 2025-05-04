@@ -36,7 +36,7 @@ class TransformerEncoderModel(nn.Module):
             nhead=8,
             nhid=2048,
             nlayers=6,
-            dropout=0.1,
+            dropout=0.12,
     ):
         super().__init__()
         self.embedding = nn.Embedding(

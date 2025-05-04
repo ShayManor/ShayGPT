@@ -1,6 +1,6 @@
 import os
 import torch, torch.nn as nn
-from torch.cuda.amp import autocast, GradScaler
+from torch.amp import autocast, GradScaler
 from torch.utils.data import DataLoader
 from TextDataset import TextDataset
 from TransformerEncoderModel import TransformerEncoderModel
@@ -10,7 +10,7 @@ from tokenizer import tokenizer
 def train(csv_path: str,
           epochs: int = 3,
           init_batch: int = 64,
-          lr: float = 2e-4):
+          lr: float = 5e-3):
     torch.backends.cudnn.benchmark = True
     torch.set_float32_matmul_precision("medium")
 
@@ -21,12 +21,12 @@ def train(csv_path: str,
     loader = DataLoader(dataset,
                         batch_size=init_batch,
                         shuffle=True,
-                        num_workers=os.cpu_count() // 2,
+                        num_workers=0,
                         pin_memory=True,
-                        persistent_workers=True)
+                        persistent_workers=False)
 
     model = TransformerEncoderModel(tokenizer.get_vocab_size()).to(device)
-    model = torch.compile(model)
+    # model = torch.compile(model)
     opt = torch.optim.AdamW(model.parameters(), lr=lr)
     crit = nn.CrossEntropyLoss(ignore_index=tokenizer.token_to_id("[PAD]"))
     scaler = GradScaler()
@@ -41,7 +41,7 @@ def train(csv_path: str,
             tgt = batch_ids[:, 1:]
             att = batch_att[:, :-1]
 
-            with autocast():
+            with autocast('cuda'):
                 logits = model(inp, att) @ model.embedding.weight.T
                 loss = crit(logits.view(-1, logits.size(-1)),
                             tgt.reshape(-1))
