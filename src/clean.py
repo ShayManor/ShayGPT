@@ -42,6 +42,7 @@ def full_clean(paths: Union[str, List[str]]):
                 c = clean(raw)
                 if c:
                     texts.append(c)
+    return texts
 
 
 if __name__ == '__main__':
