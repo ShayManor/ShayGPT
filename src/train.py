@@ -10,7 +10,7 @@ from tokenizer import tokenizer
 def train(csv_path: str,
           epochs: int = 3,
           init_batch: int = 64,
-          lr: float = 5e-3):
+          lr: float = 1e-4):
     torch.backends.cudnn.benchmark = True
     torch.set_float32_matmul_precision("medium")
 
@@ -64,4 +64,4 @@ def train(csv_path: str,
 
 
 if __name__ == "__main__":
-    train("data/AI_Human.csv", epochs=6)
+    train("data/AI_Human.csv", epochs=10)
