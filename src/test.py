@@ -16,3 +16,6 @@ def sample(model, prompt, max_new_tokens=50, temperature=1.0):
         if next_id == tokenizer.token_to_id("[EOS]"):
             break
     return tokenizer.decode(ids)
+
+if __name__ == '__main__':
+    sample()
