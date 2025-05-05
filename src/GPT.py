@@ -16,13 +16,19 @@ class XformersMHA(nn.Module):
         self.dropout = dropout
 
     def forward(self, x):
-        B, T = x.shape
-        assert T <= self.cfg.max_len, "sequence length exceeds model max_len"
-        scale = math.sqrt(self.cfg.d_model)
-        x = self.tok_emb(x) * scale
-        x = checkpoint_sequential(self.blocks, len(self.blocks), x)
-        x = self.ln_f(x)
-        return self.lm_head(x)
+        B, T, D = x.shape
+        qkv = self.qkv(x).view(B, T, 3, self.n_head, self.d_head)
+        q, k, v = qkv.unbind(dim=2)  # each [B, T, H, Dh]
+        # xformers expects [B, H, T, Dh]
+        q, k, v = (t.transpose(1, 2) for t in (q, k, v))
+        attn = memory_efficient_attention(
+            q, k, v,
+            attn_bias=None,
+            p=self.dropout,
+        )
+        attn = attn.transpose(1, 2).contiguous().view(B, T, D)
+
+        return self.out(attn)
 
 
 class GPTConfig:
@@ -75,12 +81,11 @@ class GPT(nn.Module):
             if getattr(m, "bias", None) is not None:
                 nn.init.zeros_(m.bias)
 
-    def forward(self, idx):  # idx: [B,T]
-        B, T = idx.shape
-        assert T <= self.cfg.max_len
-        x = self.tok_emb(idx) * (self.cfg.d_model ** 0.5)
-        for blk in self.blocks:
-            x = x + blk["attn"](blk["ln1"](x))
-            x = x + blk["mlp"](blk["ln2"](x))
+    def forward(self, x):  # idx: [B,T]
+        B, D, T = x.shape
+        assert T <= self.cfg.max_len, "sequence length exceeds model max_len"
+        scale = math.sqrt(self.cfg.d_model)
+        x = self.tok_emb(x) * scale
+        x = checkpoint_sequential(self.blocks, len(self.blocks), x)
         x = self.ln_f(x)
         return self.lm_head(x)
