@@ -42,7 +42,7 @@ def train(epochs: int = 3,
 
     cfg = GPTConfig(vocab_size=tokenizer.get_vocab_size())
     model = GPT(cfg).to(device)
-    model = torch.compile(model, mode="max-autotune")
+    # model = torch.compile(model, mode="max-autotune")
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank])
     opt = bnb.optim.AdamW8bit(model.parameters(),
                               lr=lr,
