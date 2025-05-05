@@ -82,7 +82,7 @@ class GPT(nn.Module):
     def forward(self, idx):  # idx: [B,T]
         B, T = idx.shape
         assert T <= self.cfg.max_len
-        x = self.tok_emb(idx * (self.cfg.d_model ** 0.5))
+        x = self.tok_emb(idx) * (self.cfg.d_model ** 0.5)
         for blk in self.blocks:
             x = x + blk["attn"](blk["ln1"](x))
             x = x + blk["mlp"](blk["ln2"](x))
