@@ -82,7 +82,7 @@ class GPT(nn.Module):
                 nn.init.zeros_(m.bias)
 
     def forward(self, x):  # idx: [B,T]
-        B, D, T = x.shape
+        B, T = x.shape
         assert T <= self.cfg.max_len, "sequence length exceeds model max_len"
         scale = math.sqrt(self.cfg.d_model)
         x = self.tok_emb(x) * scale
