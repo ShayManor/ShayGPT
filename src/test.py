@@ -7,6 +7,7 @@ cfg = GPTConfig(
 model = GPT(cfg)
 total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 print(f"Total parameters: {total_params:,} ~= {total_params / 1e6:.2f} M parameters")
+exit(0)
 model.load_state_dict(torch.load("data/e9.pth", map_location=torch.device('cpu')))
 model.eval()
 

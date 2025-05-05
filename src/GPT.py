@@ -5,9 +5,9 @@ from torch import nn
 class GPTConfig:
     def __init__(self,
                  vocab_size,
-                 n_layer=6,
-                 n_head=8,
-                 d_model=512,
+                 n_layer=16,
+                 n_head=16,
+                 d_model=1024,
                  dropout=0.1,
                  max_len=1024):
         self.__dict__.update(locals())
