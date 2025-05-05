@@ -50,19 +50,14 @@ def train(epochs: int = 3,
         dc = DownloadConfig(
             max_retries=10,
         )
-        pattern = re.compile(
-            r"^https://data\.together\.xyz/redpajama-data-1T/v\d+\.\d+\.\d+/common_crawl/\d{4}-\d{2}/.+\.jsonl\.zst$")
-
-        with open("redpajama-1t/urls/common_crawl.txt") as f:
-            valid_urls = [line.strip() for line in f if pattern.match(line.strip())]
-        hf_stream = load_dataset(
-            "json",
-            data_files=valid_urls,
+        stream = load_dataset(
+            "togethercomputer/RedPajama-Data-1T",
+            "common_crawl",
             split="train",
             streaming=True
-        ).shuffle(buffer_size=1_000_000, seed=2269 + epoch)
+        )
 
-        dataset = StreamDataset(hf_stream, world_size, rank)
+        dataset = StreamDataset(stream, world_size, rank)
         loader = DataLoader(
             dataset,
             batch_size=batch_size,
@@ -96,7 +91,7 @@ def train(epochs: int = 3,
                 scheduler.step()
                 opt.zero_grad(set_to_none=True)
 
-            if global_step % 1000 == 0 and local_rank == 0:
+            if global_step % 100 == 0 and local_rank == 0:
                 print(f"epoch {epoch} step {global_step} loss {loss.item():.4f} lr = {scheduler.get_last_lr()[0]:.5}")
             global_step += 1
         if local_rank == 0:
