@@ -49,11 +49,10 @@ def train(epochs: int = 3,
             max_retries=10,
         )
         hf_stream = load_dataset(
-            "redpajama-1t",
-            "common_crawl",
+            "json",
+            data_files="redpajama-1t/common_crawl/*.jsonl",
             split="train",
-            streaming=True,
-            download_config=dc
+            streaming=True
         ).shuffle(buffer_size=1_000_000, seed=2269 + epoch)
 
         dataset = StreamDataset(hf_stream, world_size, rank)
