@@ -36,18 +36,17 @@ class StreamDataset(IterableDataset):
     Each item is **raw text**; tokenisation happens in collate_batch.
     """
 
-    def __init__(self, hf_stream):
+    def __init__(self, hf_stream, world_size, rank):
         super().__init__()
-        self.stream = hf_stream
+        self.hf_stream = hf_stream
+        self.world_size = world_size
+        self.rank = rank
 
     def __iter__(self):
-        worker_info = torch.utils.data.get_worker_info()
-        if worker_info is None:
-            it = self.stream
-        else:
-            it = itertools.islice(self.stream, worker_info.id, None, worker_info.num_workers)
-        for record in it:
-            yield record["text"]
+        for i, rec in enumerate(self.hf_stream):
+            if i % self.world_size != self.rank:
+                continue
+            yield rec["text"]
 
     def __len__(self):
         return 10000  # arbitrary
