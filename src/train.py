@@ -48,9 +48,10 @@ def train(epochs: int = 3,
         dc = DownloadConfig(
             max_retries=10,
         )
+        urls = [u.strip() for u in open("redpajama-1t/urls/common_crawl.txt")]
         hf_stream = load_dataset(
             "json",
-            data_files="redpajama-1t/common_crawl/*.jsonl",
+            data_files=urls,
             split="train",
             streaming=True
         ).shuffle(buffer_size=1_000_000, seed=2269 + epoch)
