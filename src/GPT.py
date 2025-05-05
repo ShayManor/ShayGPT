@@ -1,7 +1,6 @@
 import torch
 from torch import nn
 from xformers.ops import memory_efficient_attention
-from xformers.ops.fmha import AttentionOpDispatch
 
 
 class XformersMHA(nn.Module):
@@ -23,7 +22,6 @@ class XformersMHA(nn.Module):
             q, k, v,
             attn_bias=None,
             p=self.dropout,
-            op=AttentionOpDispatch.AUTO
         )
         attn = attn.transpose(1, 2).contiguous().view(B, T, D)
         return self.out(attn)
