@@ -26,24 +26,7 @@ def train(epochs: int = 3,
     print("Using device:", device)
     rank = dist.get_rank()
     world_size = dist.get_world_size()
-    hf_stream = (
-        load_dataset("togethercomputer/RedPajama-Data-1T",
-                     "common_crawl",
-                     download_config=DownloadConfig(
-                         max_retries=10,
-                     ),
-                     split="train", streaming=True)
-    )
-    dataset = StreamDataset(hf_stream, world_size, rank)
-    loader = DataLoader(
-        dataset,
-        batch_size=batch_size,
-        num_workers=1,
-        pin_memory=True,
-        persistent_workers=True,
-        prefetch_factor=4,
-        collate_fn=lambda ex: collate_batch(ex, BOS_ID, EOS_ID, PAD_ID),
-    )
+    steps_per_epoch = 10_000
     bos_id, eos_id, pad_id = (tokenizer.token_to_id(t) for t in ["[BOS]", "[EOS]", "[PAD]"])
     cfg = GPTConfig(vocab_size=tokenizer.get_vocab_size())
     model = GPT(cfg).to(device)
@@ -54,7 +37,7 @@ def train(epochs: int = 3,
                               weight_decay=0.1,
                               eps=1e-8)
     accum_steps = 8
-    total_steps = len(loader) * epochs
+    total_steps = steps_per_epoch * epochs
     warmup_steps = int(0.02 * total_steps)
     scheduler = get_cosine_schedule_with_warmup(opt, warmup_steps, total_steps)
     pad_id = tokenizer.token_to_id("[PAD]")
@@ -62,16 +45,19 @@ def train(epochs: int = 3,
         raise RuntimeError("PAD token not found in tokenizer!")
     global_step = 0
     for epoch in range(epochs):
-        hf_stream = (
-            load_dataset("togethercomputer/RedPajama-Data-1T",
-                         "common_crawl",
-                         download_config=DownloadConfig(  # optional: throttle retries
-                             max_retries=10,
-                         ),
-                         split="train", streaming=True)
-            .shuffle(buffer_size=1_000_000, seed=2269 + epoch)
-            # .shard(num_shards=world_size, index=rank)
+        dc = DownloadConfig(
+            max_parallel_downloads=1,
+            max_retries=10,
+            timeout=60
         )
+        hf_stream = load_dataset(
+            "redpajama-1t",
+            "common_crawl",
+            split="train",
+            streaming=True,
+            download_config=dc
+        ).shuffle(buffer_size=1_000_000, seed=2269 + epoch)
+
         dataset = StreamDataset(hf_stream, world_size, rank)
         loader = DataLoader(
             dataset,
