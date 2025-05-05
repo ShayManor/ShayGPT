@@ -48,3 +48,6 @@ class StreamDataset(IterableDataset):
             it = itertools.islice(self.stream, worker_info.id, None, worker_info.num_workers)
         for record in it:
             yield record["text"]
+
+    def __len__(self):
+        return 10000  # arbitrary
