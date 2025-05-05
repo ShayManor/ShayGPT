@@ -36,7 +36,7 @@ def train(epochs: int = 3,
         dataset, shuffle=True)
     loader = DataLoader(dataset,
                         batch_size=batch_size,
-                        sampler=sampler,
+                        # sampler=sampler,
                         num_workers=4,
                         collate_fn=lambda ex: collate_batch(ex, BOS_ID, EOS_ID, PAD_ID))
 
@@ -58,7 +58,7 @@ def train(epochs: int = 3,
         raise RuntimeError("PAD token not found in tokenizer!")
     global_step = 0
     for epoch in range(epochs):
-        sampler.set_epoch(epoch)
+        # sampler.set_epoch(epoch)
         for step, (ids, att) in enumerate(loader):
             ids = ids.to(device, non_blocking=True)
             # att = att.to(device, non_blocking=True)
