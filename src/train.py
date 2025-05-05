@@ -1,6 +1,6 @@
 import os
 import torch, torch.nn as nn
-from datasets import load_dataset
+from datasets import load_dataset, DownloadConfig
 from torch.amp import autocast
 from torch.utils.data import DataLoader
 import torch.distributed as dist
@@ -27,7 +27,10 @@ def train(epochs: int = 3,
     rank = dist.get_rank()
     world_size = dist.get_world_size()
     hf_stream = (
-        load_dataset("togethercomputer/RedPajama-Data-1T-Sample",
+        load_dataset("togethercomputer/RedPajama-Data-1T-Sample", "common_crawl",
+                     download_config=DownloadConfig(
+                         max_retries=10,
+                     ),
                      split="train", streaming=True)
         .shuffle(buffer_size=1_000_000, seed=2269)
         # .shard(num_shards=world_size, index=rank)
@@ -62,7 +65,10 @@ def train(epochs: int = 3,
     for epoch in range(epochs):
         hf_stream = (
             load_dataset("togethercomputer/RedPajama-Data-1T",
-                         "default",
+                         "common_crawl",
+                         download_config=DownloadConfig(  # optional: throttle retries
+                             max_retries=10,
+                         ),
                          split="train", streaming=True)
             .shuffle(buffer_size=1_000_000, seed=2269 + epoch)
             # .shard(num_shards=world_size, index=rank)
