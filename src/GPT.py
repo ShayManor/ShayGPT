@@ -1,6 +1,9 @@
+import math
+
 import torch
 from torch import nn
 from xformers.ops import memory_efficient_attention
+from torch.utils.checkpoint import checkpoint_sequential
 
 
 class XformersMHA(nn.Module):
@@ -13,18 +16,13 @@ class XformersMHA(nn.Module):
         self.dropout = dropout
 
     def forward(self, x):
-        B, T, D = x.shape
-        qkv = self.qkv(x).view(B, T, 3, self.n_head, self.d_head)
-        q, k, v = qkv.unbind(dim=2)  # each [B, T, H, Dh]
-        # xformers expects [B, H, T, Dh]
-        q, k, v = (t.transpose(1, 2) for t in (q, k, v))
-        attn = memory_efficient_attention(
-            q, k, v,
-            attn_bias=None,
-            p=self.dropout,
-        )
-        attn = attn.transpose(1, 2).contiguous().view(B, T, D)
-        return self.out(attn)
+        B, T = x.shape
+        assert T <= self.cfg.max_len, "sequence length exceeds model max_len"
+        scale = math.sqrt(self.cfg.d_model)
+        x = self.tok_emb(x) * scale
+        x = checkpoint_sequential(self.blocks, len(self.blocks), x)
+        x = self.ln_f(x)
+        return self.lm_head(x)
 
 
 class GPTConfig:

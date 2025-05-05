@@ -12,7 +12,7 @@ from transformers import get_cosine_schedule_with_warmup
 
 
 def train(epochs: int = 3,
-          batch_size: int = 32,
+          batch_size: int = 16,
           lr: float = 1.5e-4):
     dist.init_process_group("nccl")
     torch.backends.cuda.matmul.allow_tf32 = True
@@ -49,6 +49,7 @@ def train(epochs: int = 3,
                               betas=(0.9, 0.95),
                               weight_decay=0.1,
                               eps=1e-8)
+    accum_steps = 8
     total_steps = len(loader) * epochs
     warmup_steps = int(0.02 * total_steps)
     scheduler = get_cosine_schedule_with_warmup(opt, warmup_steps, total_steps)
@@ -76,10 +77,11 @@ def train(epochs: int = 3,
                     label_smoothing=0.0,
                 )
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            opt.step()
-            scheduler.step()
-            opt.zero_grad(set_to_none=True)
+            if (step + 1) % accum_steps == 0:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                opt.step()
+                scheduler.step()
+                opt.zero_grad(set_to_none=True)
 
             if global_step % 1000 == 0 and local_rank == 0:
                 print(f"epoch {epoch} step {global_step} loss {loss.item():.4f} lr = {scheduler.get_last_lr()[0]:.2e}")
