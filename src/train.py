@@ -26,26 +26,25 @@ def train(epochs: int = 3,
     print("Using device:", device)
     rank = dist.get_rank()
     world_size = dist.get_world_size()
-
-    hf_stream = (load_dataset("togethercomputer/RedPajama-Data-1T-Sample",
-                              split="train", streaming=True)
-                 .shuffle(buffer_size=1_000_000, seed=2269)
-                 .shard(num_shards=world_size, index=rank))
+    hf_stream = (
+        load_dataset("togethercomputer/RedPajama-Data-1T-Sample",
+                     split="train", streaming=True)
+        .shuffle(buffer_size=1_000_000, seed=2269)
+        .shard(num_shards=world_size, index=rank)
+    )
     dataset = StreamDataset(hf_stream)
+    loader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        num_workers=min(4, world_size),
+        pin_memory=True,
+        persistent_workers=True,
+        prefetch_factor=4,
+        collate_fn=lambda ex: collate_batch(ex, BOS_ID, EOS_ID, PAD_ID),
+    )
     bos_id, eos_id, pad_id = (tokenizer.token_to_id(t) for t in ["[BOS]", "[EOS]", "[PAD]"])
-    # sampler = torch.utils.data.distributed.DistributedSampler(
-    #     dataset, shuffle=True)
-    loader = DataLoader(dataset,
-                        batch_size=batch_size,
-                        num_workers=4,
-                        pin_memory=True,
-                        persistent_workers=True,
-                        prefetch_factor=2,
-                        collate_fn=lambda ex: collate_batch(ex, BOS_ID, EOS_ID, PAD_ID))
-
     cfg = GPTConfig(vocab_size=tokenizer.get_vocab_size())
     model = GPT(cfg).to(device)
-    # model = torch.compile(model, mode="max-autotune")
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank])
     opt = bnb.optim.AdamW8bit(model.parameters(),
                               lr=lr,
@@ -56,13 +55,28 @@ def train(epochs: int = 3,
     total_steps = len(loader) * epochs
     warmup_steps = int(0.02 * total_steps)
     scheduler = get_cosine_schedule_with_warmup(opt, warmup_steps, total_steps)
-    # scaler = GradScaler(init_scale=2 ** 8, growth_interval=50)
     pad_id = tokenizer.token_to_id("[PAD]")
     if pad_id is None:
         raise RuntimeError("PAD token not found in tokenizer!")
     global_step = 0
     for epoch in range(epochs):
-        # sampler.set_epoch(epoch)
+        hf_stream = (
+            load_dataset("togethercomputer/RedPajama-Data-1T-Sample",
+                         split="train", streaming=True)
+            .shuffle(buffer_size=1_000_000, seed=2269 + epoch)
+            .shard(num_shards=world_size, index=rank)
+        )
+        dataset = StreamDataset(hf_stream)
+        loader = DataLoader(
+            dataset,
+            batch_size=batch_size,
+            num_workers=min(4, world_size),
+            pin_memory=True,
+            persistent_workers=True,
+            prefetch_factor=4,
+            collate_fn=lambda ex: collate_batch(ex, BOS_ID, EOS_ID, PAD_ID),
+        )
+
         for step, ids in enumerate(loader):
             ids = ids.to(device, non_blocking=True)
             # att = att.to(device, non_blocking=True)

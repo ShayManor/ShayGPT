@@ -7,12 +7,12 @@ cfg = GPTConfig(
 model = GPT(cfg)
 total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 print(f"Total parameters: {total_params:,} ~= {total_params / 1e6:.2f} M parameters")
-model.load_state_dict(torch.load("data/transformer_encoder_e3.pth", map_location=torch.device('cpu')))
+model.load_state_dict(torch.load("data/e9.pth", map_location=torch.device('cpu')))
 model.eval()
 
-prompt = "10 words I would use to describe Dana are "
+prompt = "Oliver is a beacon of "
 ids = tokenizer.encode(prompt).ids
-for _ in range(40):
+for _ in range(25):
     inp = torch.tensor([ids])
     logits = model(inp)[:, -1, :]
     next_id = torch.multinomial(
