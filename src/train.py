@@ -96,7 +96,7 @@ def train(epochs: int = 3,
             torch.save(model.state_dict(), f"gpt_epoch{epoch}.pth")
 
     torch.save(model.module.tok_emb.weight.cpu(), "embed_matrix.pth")
-    if loss in locals():
+    if "loss" in locals():
         print("⚡ Training done.  Final loss:", loss.item())
     else:
         print("No batches loaded")
