@@ -30,7 +30,7 @@ def train(epochs: int = 3,
         load_dataset("togethercomputer/RedPajama-Data-1T-Sample",
                      split="train", streaming=True)
         .shuffle(buffer_size=1_000_000, seed=2269)
-        .shard(num_shards=world_size, index=rank)
+        # .shard(num_shards=world_size, index=rank)
     )
     dataset = StreamDataset(hf_stream, world_size, rank)
     loader = DataLoader(
@@ -65,7 +65,7 @@ def train(epochs: int = 3,
                          "default",
                          split="train", streaming=True)
             .shuffle(buffer_size=1_000_000, seed=2269 + epoch)
-            .shard(num_shards=world_size, index=rank)
+            # .shard(num_shards=world_size, index=rank)
         )
         dataset = StreamDataset(hf_stream, world_size, rank)
         loader = DataLoader(

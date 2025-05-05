@@ -49,4 +49,4 @@ class StreamDataset(IterableDataset):
             yield rec["text"]
 
     def __len__(self):
-        return 10000  # arbitrary
+        return 100000  # arbitrary
