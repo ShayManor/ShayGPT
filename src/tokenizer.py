@@ -29,7 +29,6 @@ if _TOKENIZER_PATH.exists():
     tokenizer = Tokenizer.from_file(str(_TOKENIZER_PATH))
 else:
     from tokenizers import models, trainers, pre_tokenizers, processors
-    from clean import full_clean
 
 
     def pj_iter():
@@ -65,6 +64,6 @@ else:
     # tokenizer.enable_truncation(max_length=512)
 
     tokenizer.save(str(_TOKENIZER_PATH))
-    BOS_ID = tokenizer.token_to_id("[BOS]")
-    EOS_ID = tokenizer.token_to_id("[EOS]")
-    PAD_ID = tokenizer.token_to_id("[PAD]")
+BOS_ID = tokenizer.token_to_id("[BOS]")
+EOS_ID = tokenizer.token_to_id("[EOS]")
+PAD_ID = tokenizer.token_to_id("[PAD]")

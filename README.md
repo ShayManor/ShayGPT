@@ -147,5 +147,10 @@ Loop the above to generate multi‐token continuations, or use sampling via `tor
 
 ---
 
+run with
+```commandline
+torchrun --nproc_per_node=4 train.py --config gpt_d768_l12.yml
+```
+
 For questions or contributions, open an issue or submit a pull request. Stay innovative!
 © 2025 Shay Manor
