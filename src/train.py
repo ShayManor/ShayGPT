@@ -16,6 +16,7 @@ def train(epochs: int = 3,
           lr: float = 1.5e-4):
     dist.init_process_group("nccl")
     torch.backends.cuda.matmul.allow_tf32 = True
+    torch.set_num_threads(4)
     torch.backends.cudnn.benchmark = True
     torch.set_float32_matmul_precision("medium")
 
@@ -32,12 +33,14 @@ def train(epochs: int = 3,
                  .shard(num_shards=world_size, index=rank))
     dataset = StreamDataset(hf_stream)
     bos_id, eos_id, pad_id = (tokenizer.token_to_id(t) for t in ["[BOS]", "[EOS]", "[PAD]"])
-    sampler = torch.utils.data.distributed.DistributedSampler(
-        dataset, shuffle=True)
+    # sampler = torch.utils.data.distributed.DistributedSampler(
+    #     dataset, shuffle=True)
     loader = DataLoader(dataset,
                         batch_size=batch_size,
-                        # sampler=sampler,
                         num_workers=4,
+                        pin_memory=True,
+                        persistent_workers=True,
+                        prefetch_factor=2,
                         collate_fn=lambda ex: collate_batch(ex, BOS_ID, EOS_ID, PAD_ID))
 
     cfg = GPTConfig(vocab_size=tokenizer.get_vocab_size())
@@ -84,7 +87,7 @@ def train(epochs: int = 3,
                 opt.zero_grad(set_to_none=True)
 
             if global_step % 1000 == 0 and local_rank == 0:
-                print(f"epoch {epoch} step {global_step} loss {loss.item():.4f} lr = {scheduler.get_last_lr()[0]:.2e}")
+                print(f"epoch {epoch} step {global_step} loss {loss.item():.4f} lr = {scheduler.get_last_lr()[0]:.5}")
             global_step += 1
         if local_rank == 0:
             torch.save(model.state_dict(), f"gpt_epoch{epoch}.pth")
@@ -98,5 +101,3 @@ def train(epochs: int = 3,
 
 if __name__ == "__main__":
     train(epochs=10)
-
-
