@@ -27,7 +27,7 @@ def train(epochs: int = 3,
     rank = dist.get_rank()
     world_size = dist.get_world_size()
     hf_stream = (
-        load_dataset("togethercomputer/RedPajama-Data-1T-Sample", "Commoncrawl",
+        load_dataset("togethercomputer/RedPajama-Data-1T-Sample", "plain_text",
                      download_config=DownloadConfig(
                          max_retries=10,
                      ),
@@ -65,7 +65,7 @@ def train(epochs: int = 3,
     for epoch in range(epochs):
         hf_stream = (
             load_dataset("togethercomputer/RedPajama-Data-1T",
-                         "Commoncrawl",
+                         "plain_text",
                          download_config=DownloadConfig(  # optional: throttle retries
                              max_retries=10,
                          ),
