@@ -59,7 +59,7 @@ def train(epochs: int = 3,
     global_step = 0
     for epoch in range(epochs):
         # sampler.set_epoch(epoch)
-        for step, (ids, att) in enumerate(loader):
+        for step, ids in enumerate(loader):
             ids = ids.to(device, non_blocking=True)
             # att = att.to(device, non_blocking=True)
             input = ids[:, :-1]
