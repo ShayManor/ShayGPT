@@ -47,8 +47,6 @@ else:
         special_tokens=["[PAD]", "[UNK]", "[BOS]", "[EOS]"]
     )
     sample_iter = itertools.islice(pj_iter(), 10_000_000)
-    # shards = [x for x in os.listdir('redpajama') if x.endswith('jsonl')]
-    # texts = full_clean(sample_iter)
     tokenizer.train_from_iterator(sample_iter, trainer=trainer)
 
     tokenizer.post_processor = processors.TemplateProcessing(
