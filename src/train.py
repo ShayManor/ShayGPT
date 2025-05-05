@@ -88,3 +88,5 @@ def train(csv_path,
 if __name__ == "__main__":
     shards = [x for x in os.listdir('redpajama') if x.endswith('jsonl')]
     train(shards, epochs=10)
+
+

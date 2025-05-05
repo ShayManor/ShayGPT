@@ -33,10 +33,8 @@ else:
 
 
     def pj_iter():
-        data_files = {"train": "redpajama-cc/*.jsonl.zst"}
-        ds_stream = load_dataset("json",
-                                 data_files=data_files,
-                                 streaming=True)["train"]
+        # data_files = {"train": "redpajama-cc/*.jsonl.zst"}
+        ds_stream = load_dataset("togethercomputer/RedPajama-Data-1T-Sample", split="train", streaming=True)
         for rec in ds_stream:
             yield rec["text"]
 
