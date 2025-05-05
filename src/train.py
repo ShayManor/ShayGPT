@@ -1,5 +1,6 @@
 import os
 import torch, torch.nn as nn
+from datasets import load_dataset
 from torch.amp import autocast
 from torch.utils.data import DataLoader
 import torch.distributed as dist
@@ -23,8 +24,14 @@ def train(csv_path,
     torch.cuda.set_device(local_rank)
     device = torch.device("cuda", local_rank)
     print("Using device:", device)
+    def build_stream():
+        ds = load_dataset(
+            "togethercomputer/RedPajama-Data-1T-Sample",
+            split="train", streaming=True)
+        for rec in ds:
+            yield rec["text"]
 
-    dataset = TextDataset(csv_path, max_len=512)
+    dataset = build_stream()
     bos_id, eos_id, pad_id = (tokenizer.token_to_id(t) for t in ["[BOS]", "[EOS]", "[PAD]"])
     sampler = torch.utils.data.distributed.DistributedSampler(
         dataset, shuffle=True)
@@ -82,7 +89,10 @@ def train(csv_path,
             torch.save(model.state_dict(), f"gpt_epoch{epoch}.pth")
 
     torch.save(model.module.tok_emb.weight.cpu(), "embed_matrix.pth")
-    print("⚡ Training done.  Final loss:", loss.item())
+    if loss in locals():
+        print("⚡ Training done.  Final loss:", loss.item())
+    else:
+        print("No batches loaded")
 
 
 if __name__ == "__main__":
