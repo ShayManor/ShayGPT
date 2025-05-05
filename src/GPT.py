@@ -32,7 +32,7 @@ class GPTConfig:
                  vocab_size,
                  n_layer=18,
                  n_head=18,
-                 d_model=1224,
+                 d_model=1152,
                  dropout=0.1,
                  max_len=512):
         self.__dict__.update(locals())
