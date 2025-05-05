@@ -27,13 +27,12 @@ def train(epochs: int = 3,
     rank = dist.get_rank()
     world_size = dist.get_world_size()
     hf_stream = (
-        load_dataset("togethercomputer/RedPajama-Data-1T-Sample", "plain_text",
+        load_dataset("togethercomputer/RedPajama-Data-1T",
+                     "common_crawl",
                      download_config=DownloadConfig(
                          max_retries=10,
                      ),
                      split="train", streaming=True)
-        .shuffle(buffer_size=1_000_000, seed=2269)
-        # .shard(num_shards=world_size, index=rank)
     )
     dataset = StreamDataset(hf_stream, world_size, rank)
     loader = DataLoader(
@@ -65,7 +64,7 @@ def train(epochs: int = 3,
     for epoch in range(epochs):
         hf_stream = (
             load_dataset("togethercomputer/RedPajama-Data-1T",
-                         "plain_text",
+                         "common_crawl",
                          download_config=DownloadConfig(  # optional: throttle retries
                              max_retries=10,
                          ),
