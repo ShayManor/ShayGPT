@@ -4,15 +4,14 @@ from datasets import load_dataset
 from torch.amp import autocast
 from torch.utils.data import DataLoader
 import torch.distributed as dist
-from TextDataset import TextDataset
+from TextDataset import TextDataset, StreamDataset
 from GPT import GPTConfig, GPT
 from tokenizer import tokenizer, collate_batch, BOS_ID, EOS_ID, PAD_ID
 import bitsandbytes as bnb
 from transformers import get_cosine_schedule_with_warmup
 
 
-def train(csv_path,
-          epochs: int = 3,
+def train(epochs: int = 3,
           batch_size: int = 32,
           lr: float = 1.5e-4):
     dist.init_process_group("nccl")
@@ -24,14 +23,12 @@ def train(csv_path,
     torch.cuda.set_device(local_rank)
     device = torch.device("cuda", local_rank)
     print("Using device:", device)
-    def build_stream():
-        ds = load_dataset(
-            "togethercomputer/RedPajama-Data-1T-Sample",
-            split="train", streaming=True)
-        for rec in ds:
-            yield rec["text"]
 
-    dataset = build_stream()
+    hf_stream = load_dataset(
+        "togethercomputer/RedPajama-Data-1T-Sample",
+        split="train",
+        streaming=True)
+    dataset = StreamDataset(hf_stream)  # ← new
     bos_id, eos_id, pad_id = (tokenizer.token_to_id(t) for t in ["[BOS]", "[EOS]", "[PAD]"])
     sampler = torch.utils.data.distributed.DistributedSampler(
         dataset, shuffle=True)
@@ -96,6 +93,6 @@ def train(csv_path,
 
 
 if __name__ == "__main__":
-    train("", epochs=10)
+    train(epochs=10)
 
 
