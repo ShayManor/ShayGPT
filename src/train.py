@@ -1,4 +1,6 @@
 import os
+import re
+
 import torch, torch.nn as nn
 from datasets import load_dataset, DownloadConfig
 from torch.amp import autocast
@@ -48,10 +50,14 @@ def train(epochs: int = 3,
         dc = DownloadConfig(
             max_retries=10,
         )
-        urls = [u.strip() for u in open("redpajama-1t/urls/common_crawl.txt")]
+        pattern = re.compile(
+            r"^https://data\.together\.xyz/redpajama-data-1T/v\d+\.\d+\.\d+/common_crawl/\d{4}-\d{2}/.+\.jsonl\.zst$")
+
+        with open("redpajama-1t/urls/common_crawl.txt") as f:
+            valid_urls = [line.strip() for line in f if pattern.match(line.strip())]
         hf_stream = load_dataset(
             "json",
-            data_files=urls,
+            data_files=valid_urls,
             split="train",
             streaming=True
         ).shuffle(buffer_size=1_000_000, seed=2269 + epoch)
