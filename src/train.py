@@ -46,9 +46,7 @@ def train(epochs: int = 3,
     global_step = 0
     for epoch in range(epochs):
         dc = DownloadConfig(
-            max_parallel_downloads=1,
             max_retries=10,
-            timeout=60
         )
         hf_stream = load_dataset(
             "redpajama-1t",
