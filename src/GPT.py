@@ -6,6 +6,25 @@ from xformers.ops import memory_efficient_attention
 from torch.utils.checkpoint import checkpoint_sequential
 
 
+class TransformerBlock(nn.Module):
+    def __init__(self, d_model, n_head, dropout):
+        super().__init__()
+        self.ln1 = nn.LayerNorm(d_model)
+        self.attn = XformersMHA(d_model, n_head, dropout)
+        self.ln2 = nn.LayerNorm(d_model)
+        self.mlp = nn.Sequential(
+            nn.Linear(d_model, 4 * d_model, bias=False),
+            nn.GELU(),
+            nn.Linear(4 * d_model, d_model, bias=False),
+            nn.Dropout(dropout)
+        )
+
+    def forward(self, x):
+        x = x + self.attn(self.ln1(x))
+        x = x + self.mlp(self.ln2(x))
+        return x
+
+
 class XformersMHA(nn.Module):
     def __init__(self, d_model: int, n_head: int, dropout: float):
         super().__init__()
@@ -62,18 +81,11 @@ class GPT(nn.Module):
         self.apply(self._init_weights)
 
     def _build_block(self):
-        d, h, drop = self.cfg.d_model, self.cfg.n_head, self.cfg.dropout
-        return nn.ModuleDict({
-            "ln1": nn.LayerNorm(d),
-            "attn": XformersMHA(d, h, drop),
-            "ln2": nn.LayerNorm(d),
-            "mlp": nn.Sequential(
-                nn.Linear(d, 4 * d, bias=False),
-                nn.GELU(),
-                nn.Linear(4 * d, d, bias=False),
-                nn.Dropout(drop)
-            )
-        })
+        return TransformerBlock(
+            d_model=self.cfg.d_model,
+            n_head=self.cfg.n_head,
+            dropout=self.cfg.dropout
+        )
 
     def _init_weights(self, m):
         if isinstance(m, (nn.Linear, nn.Embedding)):
