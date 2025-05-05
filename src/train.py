@@ -23,12 +23,14 @@ def train(epochs: int = 3,
     torch.cuda.set_device(local_rank)
     device = torch.device("cuda", local_rank)
     print("Using device:", device)
+    rank = dist.get_rank()
+    world_size = dist.get_world_size()
 
-    hf_stream = load_dataset(
-        "togethercomputer/RedPajama-Data-1T-Sample",
-        split="train",
-        streaming=True)
-    dataset = StreamDataset(hf_stream)  # ← new
+    hf_stream = (load_dataset("togethercomputer/RedPajama-Data-1T-Sample",
+                              split="train", streaming=True)
+                 .shuffle(buffer_size=1_000_000, seed=2269)
+                 .shard(num_shards=world_size, index=rank))
+    dataset = StreamDataset(hf_stream)
     bos_id, eos_id, pad_id = (tokenizer.token_to_id(t) for t in ["[BOS]", "[EOS]", "[PAD]"])
     sampler = torch.utils.data.distributed.DistributedSampler(
         dataset, shuffle=True)
