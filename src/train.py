@@ -61,7 +61,8 @@ def train(epochs: int = 3,
     global_step = 0
     for epoch in range(epochs):
         hf_stream = (
-            load_dataset("togethercomputer/RedPajama-Data-1T-Sample",
+            load_dataset("togethercomputer/RedPajama-Data-1T",
+                         "common_crawl",
                          split="train", streaming=True)
             .shuffle(buffer_size=1_000_000, seed=2269 + epoch)
             .shard(num_shards=world_size, index=rank)
@@ -114,4 +115,4 @@ def train(epochs: int = 3,
 
 
 if __name__ == "__main__":
-    train(epochs=10)
+    train(epochs=3)
