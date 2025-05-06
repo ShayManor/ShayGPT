@@ -28,7 +28,7 @@ def get_args():
                    default=20)
     p.add_argument('--batch_size',
                    type=int,
-                   default=8)
+                   default=16)
     p.add_argument('--lr',
                    type=float,
                    default=1.5e-4)
@@ -70,8 +70,8 @@ def train(resume: Optional[str],
         model.load_state_dict(state, strict=False)
         print(f"⚡ Loaded weights from {resume}")
         del state
-    # model.to(device)
-    scaler = torch.cuda.amp.GradScaler()
+    model.to(device)
+    scaler = torch.amp.GradScaler('cuda')
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank])
     opt = bnb.optim.AdamW8bit(model.parameters(),
                                lr=lr,
@@ -123,14 +123,12 @@ def train(resume: Optional[str],
                         ignore_index=pad_id,
                         label_smoothing=0.0,
                     )
-                loss.backward()
                 scaler.scale(loss).backward()
                 if (step + 1) % accum_steps == 0:
                     scaler.unscale_(opt)
                     torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                     scaler.step(opt)
                     scaler.update()
-                    opt.step()
                     scheduler.step()
                     opt.zero_grad(set_to_none=True)
 
