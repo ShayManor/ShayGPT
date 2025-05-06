@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 import torch.distributed as dist
 from TextDataset import TextDataset, StreamDataset
 from GPT import GPTConfig, GPT
-from src.tokenizer import tokenizer, collate_batch, BOS_ID, EOS_ID, PAD_ID
+from tokenizer import tokenizer, collate_batch, BOS_ID, EOS_ID, PAD_ID
 import bitsandbytes as bnb
 from transformers import get_cosine_schedule_with_warmup
 
