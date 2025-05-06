@@ -1,6 +1,7 @@
 import os
 import re
 import sys
+import time
 
 import torch, torch.nn as nn
 from datasets import load_dataset, DownloadConfig
@@ -13,12 +14,14 @@ from src.tokenizer import tokenizer, collate_batch, BOS_ID, EOS_ID, PAD_ID
 import bitsandbytes as bnb
 from transformers import get_cosine_schedule_with_warmup
 
+
 def save(model, step):
     torch.save(
         model.module.state_dict(),
         f"checkpoint_step{step}.pth"
     )
     print(f"⚡ Saved checkpoint at step {step}")
+
 
 def train(epochs: int = 3,
           batch_size: int = 2,
@@ -56,6 +59,7 @@ def train(epochs: int = 3,
     losses = []
     try:
         for epoch in range(epochs):
+            start_time = time.time()
             dc = DownloadConfig(
                 max_retries=10,
             )
@@ -63,6 +67,7 @@ def train(epochs: int = 3,
                 "togethercomputer/RedPajama-Data-1T",
                 "default",
                 split="train",
+                use_auth_token=True,
                 streaming=True
             )
 
@@ -112,6 +117,7 @@ def train(epochs: int = 3,
                         return
                 global_step += 1
                 if step + 1 >= steps_per_epoch:
+                    print(f'Epoch time: {time.time() - start_time}')
                     break
             if local_rank == 0:
                 save(model, global_step)
