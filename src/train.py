@@ -66,9 +66,10 @@ def train(resume: Optional[str],
     cfg = GPTConfig(vocab_size=tokenizer.get_vocab_size())
     model = GPT(cfg).to(device)
     if resume and os.path.isfile(resume):
-        state = torch.load(resume, map_location=device)
+        state = torch.load(resume, map_location="cpu")
         model.load_state_dict(state, strict=False)
         print(f"⚡ Loaded weights from {resume}")
+        del state
     model.to(device)
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank])
     opt = bnb.optim.AdamW32bit(model.parameters(),
