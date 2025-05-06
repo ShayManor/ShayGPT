@@ -45,9 +45,9 @@ def train(epochs: int = 3,
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank])
     opt = bnb.optim.AdamW32bit(model.parameters(),
                                lr=lr,
-                               betas=(0.9, 0.98),
-                               weight_decay=0.04,
-                               eps=1e-8)
+                               betas=(0.9, 0.95),
+                               weight_decay=0.02,
+                               eps=1e-7)
     accum_steps = 16
     total_steps = steps_per_epoch * epochs
     warmup_steps = int(0.05 * total_steps)
@@ -67,7 +67,7 @@ def train(epochs: int = 3,
                 "togethercomputer/RedPajama-Data-1T",
                 "default",
                 split="train",
-                use_auth_token=True,
+                trust_remote_code=True,
                 streaming=True
             )
 
