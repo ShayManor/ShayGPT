@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 
 import torch, torch.nn as nn
 from datasets import load_dataset, DownloadConfig
@@ -33,69 +34,79 @@ def train(epochs: int = 3,
     cfg = GPTConfig(vocab_size=tokenizer.get_vocab_size())
     model = GPT(cfg).to(device)
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank])
-    opt = bnb.optim.AdamW8bit(model.parameters(),
-                              lr=lr,
-                              betas=(0.9, 0.95),
-                              weight_decay=0.1,
-                              eps=1e-8)
+    opt = bnb.optim.AdamW32bit(model.parameters(),
+                               lr=lr,
+                               betas=(0.9, 0.98),
+                               weight_decay=0.04,
+                               eps=1e-8)
     accum_steps = 8
     total_steps = steps_per_epoch * epochs
-    warmup_steps = int(0.02 * total_steps)
+    warmup_steps = int(0.08 * total_steps)
     scheduler = get_cosine_schedule_with_warmup(opt, warmup_steps, total_steps)
     pad_id = tokenizer.token_to_id("[PAD]")
     if pad_id is None:
         raise RuntimeError("PAD token not found in tokenizer!")
     global_step = 0
-    for epoch in range(epochs):
-        dc = DownloadConfig(
-            max_retries=10,
+    try:
+        for epoch in range(epochs):
+            dc = DownloadConfig(
+                max_retries=10,
+            )
+            stream = load_dataset(
+                "togethercomputer/RedPajama-Data-1T",
+                "default",
+                split="train",
+                streaming=True
+            )
+
+            dataset = StreamDataset(stream, world_size, rank)
+            loader = DataLoader(
+                dataset,
+                batch_size=batch_size,
+                num_workers=1,
+                pin_memory=True,
+                persistent_workers=True,
+                prefetch_factor=4,
+                collate_fn=lambda ex: collate_batch(ex, BOS_ID, EOS_ID, PAD_ID),
+            )
+
+            for step, ids in enumerate(loader):
+                ids = ids.to(device, non_blocking=True)
+                # att = att.to(device, non_blocking=True)
+                input = ids[:, :-1]
+                target = ids[:, 1:]
+                with autocast(device_type="cuda", dtype=torch.float16):
+                    logits = model(input)
+                    flat_logits = logits.reshape(-1, logits.size(-1))
+                    flat_target = target.reshape(-1)
+
+                    loss = nn.functional.cross_entropy(
+                        flat_logits,
+                        flat_target,
+                        ignore_index=pad_id,
+                        label_smoothing=0.1,
+                    )
+                loss.backward()
+                if (step + 1) % accum_steps == 0:
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                    opt.step()
+                    scheduler.step()
+                    opt.zero_grad(set_to_none=True)
+
+                if global_step % 100 == 0 and local_rank == 0:
+                    print(
+                        f"epoch {epoch} step {global_step} loss {loss.item():.4f} lr = {scheduler.get_last_lr()[0]:.5}")
+                global_step += 1
+                if step + 1 >= steps_per_epoch:
+                    break
+            if local_rank == 0:
+                torch.save(model.state_dict(), f"gpt_epoch{epoch}.pth")
+    except KeyboardInterrupt:
+        torch.save(
+            model.module.state_dict(),
+            f"checkpoint_step{global_step}.pth"
         )
-        stream = load_dataset(
-            "togethercomputer/RedPajama-Data-1T",
-            "common_crawl",
-            split="train",
-            streaming=True
-        )
-
-        dataset = StreamDataset(stream, world_size, rank)
-        loader = DataLoader(
-            dataset,
-            batch_size=batch_size,
-            num_workers=1,
-            pin_memory=True,
-            persistent_workers=True,
-            prefetch_factor=4,
-            collate_fn=lambda ex: collate_batch(ex, BOS_ID, EOS_ID, PAD_ID),
-        )
-
-        for step, ids in enumerate(loader):
-            ids = ids.to(device, non_blocking=True)
-            # att = att.to(device, non_blocking=True)
-            input = ids[:, :-1]
-            target = ids[:, 1:]
-            with autocast(device_type="cuda", dtype=torch.bfloat16):
-                logits = model(input)
-                flat_logits = logits.reshape(-1, logits.size(-1))
-                flat_target = target.reshape(-1)
-
-                loss = nn.functional.cross_entropy(
-                    flat_logits,
-                    flat_target,
-                    ignore_index=pad_id,
-                    label_smoothing=0.0,
-                )
-            loss.backward()
-            if (step + 1) % accum_steps == 0:
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-                opt.step()
-                scheduler.step()
-                opt.zero_grad(set_to_none=True)
-
-            if global_step % 100 == 0 and local_rank == 0:
-                print(f"epoch {epoch} step {global_step} loss {loss.item():.4f} lr = {scheduler.get_last_lr()[0]:.5}")
-            global_step += 1
-        if local_rank == 0:
-            torch.save(model.state_dict(), f"gpt_epoch{epoch}.pth")
+        print(f"⚡ Saved checkpoint at step {global_step}")
 
     torch.save(model.module.tok_emb.weight.cpu(), "embed_matrix.pth")
     if "loss" in locals():
