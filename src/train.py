@@ -15,7 +15,7 @@ from transformers import get_cosine_schedule_with_warmup
 
 
 def train(epochs: int = 3,
-          batch_size: int = 4,
+          batch_size: int = 2,
           lr: float = 1.5e-4):
     dist.init_process_group("nccl")
     torch.backends.cuda.matmul.allow_tf32 = True
@@ -39,7 +39,7 @@ def train(epochs: int = 3,
                                betas=(0.9, 0.98),
                                weight_decay=0.04,
                                eps=1e-8)
-    accum_steps = 8
+    accum_steps = 16
     total_steps = steps_per_epoch * epochs
     warmup_steps = int(0.08 * total_steps)
     scheduler = get_cosine_schedule_with_warmup(opt, warmup_steps, total_steps)
