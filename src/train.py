@@ -64,7 +64,7 @@ def train(resume: Optional[str],
     steps_per_epoch = 10_000
     bos_id, eos_id, pad_id = (tokenizer.token_to_id(t) for t in ["[BOS]", "[EOS]", "[PAD]"])
     cfg = GPTConfig(vocab_size=tokenizer.get_vocab_size())
-    model = GPT(cfg).to(device)
+    model = GPT(cfg)
     if resume and os.path.isfile(resume):
         state = torch.load(resume, map_location="cpu")
         model.load_state_dict(state, strict=False)
