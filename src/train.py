@@ -75,7 +75,7 @@ def train(resume: Optional[str],
                                betas=(0.9, 0.95),
                                weight_decay=0.02,
                                eps=1e-7)
-    accum_steps = 16
+    accum_steps = 8
     total_steps = steps_per_epoch * epochs
     warmup_steps = int(0.02 * total_steps)
     scheduler = get_cosine_schedule_with_warmup(opt, warmup_steps, total_steps)
