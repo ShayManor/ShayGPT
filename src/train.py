@@ -28,10 +28,10 @@ def get_args():
                    default=10)
     p.add_argument('--batch_size',
                    type=int,
-                   default=2)
+                   default=8)
     p.add_argument('--lr',
                    type=float,
-                   default=3e-4)
+                   default=1e-4)
     return p.parse_args()
 
 
@@ -77,7 +77,7 @@ def train(resume: Optional[str],
                                eps=1e-7)
     accum_steps = 16
     total_steps = steps_per_epoch * epochs
-    warmup_steps = int(0.05 * total_steps)
+    warmup_steps = int(0.02 * total_steps)
     scheduler = get_cosine_schedule_with_warmup(opt, warmup_steps, total_steps)
     pad_id = tokenizer.token_to_id("[PAD]")
     if pad_id is None:
