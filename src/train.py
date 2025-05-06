@@ -67,7 +67,7 @@ def train(resume: Optional[str],
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank])
     if resume and os.path.isfile(resume):
         state = torch.load(resume, map_location=device)
-        model.load_state_dict(state)
+        model.module.load_state_dict(state)
         print(f"⚡ Loaded weights from {resume}")
     model.to(device)
     opt = bnb.optim.AdamW32bit(model.parameters(),
@@ -123,7 +123,7 @@ def train(resume: Optional[str],
                         flat_logits,
                         flat_target,
                         ignore_index=pad_id,
-                        label_smoothing=0.1,
+                        label_smoothing=0.0,
                     )
                 loss.backward()
                 if (step + 1) % accum_steps == 0:
