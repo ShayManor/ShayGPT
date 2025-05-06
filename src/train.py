@@ -70,9 +70,10 @@ def train(resume: Optional[str],
         model.load_state_dict(state, strict=False)
         print(f"⚡ Loaded weights from {resume}")
         del state
-    model.to(device)
+    # model.to(device)
+    scaler = torch.cuda.amp.GradScaler()
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank])
-    opt = bnb.optim.AdamW32bit(model.parameters(),
+    opt = bnb.optim.AdamW8bit(model.parameters(),
                                lr=lr,
                                betas=(0.9, 0.98),
                                weight_decay=0.02,
@@ -86,31 +87,27 @@ def train(resume: Optional[str],
         raise RuntimeError("PAD token not found in tokenizer!")
     global_step = 0
     losses = []
+    stream = load_dataset(
+        "togethercomputer/RedPajama-Data-1T",
+        "default",
+        split="train",
+        trust_remote_code=True,
+        streaming=True
+    )
+
+    dataset = StreamDataset(stream, world_size, rank)
+    loader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        num_workers=4,
+        pin_memory=True,
+        persistent_workers=True,
+        prefetch_factor=4,
+        collate_fn=lambda ex: collate_batch(ex, BOS_ID, EOS_ID, PAD_ID),
+    )
     try:
         for epoch in range(epochs):
             start_time = time.time()
-            dc = DownloadConfig(
-                max_retries=10,
-            )
-            stream = load_dataset(
-                "togethercomputer/RedPajama-Data-1T",
-                "default",
-                split="train",
-                trust_remote_code=True,
-                streaming=True
-            )
-
-            dataset = StreamDataset(stream, world_size, rank)
-            loader = DataLoader(
-                dataset,
-                batch_size=batch_size,
-                num_workers=1,
-                pin_memory=True,
-                persistent_workers=True,
-                prefetch_factor=4,
-                collate_fn=lambda ex: collate_batch(ex, BOS_ID, EOS_ID, PAD_ID),
-            )
-
             for step, ids in enumerate(loader):
                 ids = ids.to(device, non_blocking=True)
                 # att = att.to(device, non_blocking=True)
@@ -120,7 +117,6 @@ def train(resume: Optional[str],
                     logits = model(input)
                     flat_logits = logits.reshape(-1, logits.size(-1))
                     flat_target = target.reshape(-1)
-
                     loss = nn.functional.cross_entropy(
                         flat_logits,
                         flat_target,
@@ -128,8 +124,12 @@ def train(resume: Optional[str],
                         label_smoothing=0.0,
                     )
                 loss.backward()
+                scaler.scale(loss).backward()
                 if (step + 1) % accum_steps == 0:
+                    scaler.unscale_(opt)
                     torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                    scaler.step(opt)
+                    scaler.update()
                     opt.step()
                     scheduler.step()
                     opt.zero_grad(set_to_none=True)
