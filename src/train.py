@@ -13,10 +13,16 @@ from tokenizer import tokenizer, collate_batch, BOS_ID, EOS_ID, PAD_ID
 import bitsandbytes as bnb
 from transformers import get_cosine_schedule_with_warmup
 
+def save(model, step):
+    torch.save(
+        model.module.state_dict(),
+        f"checkpoint_step{step}.pth"
+    )
+    print(f"⚡ Saved checkpoint at step {step}")
 
 def train(epochs: int = 3,
           batch_size: int = 2,
-          lr: float = 1.5e-4):
+          lr: float = 3e-4):
     dist.init_process_group("nccl")
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.set_num_threads(4)
@@ -47,6 +53,7 @@ def train(epochs: int = 3,
     if pad_id is None:
         raise RuntimeError("PAD token not found in tokenizer!")
     global_step = 0
+    losses = []
     try:
         for epoch in range(epochs):
             dc = DownloadConfig(
@@ -94,20 +101,22 @@ def train(epochs: int = 3,
                     opt.zero_grad(set_to_none=True)
 
                 if global_step % 100 == 0 and local_rank == 0:
+                    losses.insert(0, loss.item())
+                    avg_loss = sum(losses) / len(losses)
                     print(
-                        f"epoch {epoch} step {global_step} loss {loss.item():.4f} lr = {scheduler.get_last_lr()[0]:.5}")
+                        f"epoch {epoch} step {global_step} loss {sum(losses) / len(losses):.4f} lr = {scheduler.get_last_lr()[0]:.5}")
+                    if len(losses) > 10:
+                        losses.pop(-1)
+                    if avg_loss < 3.0:
+                        save(model, global_step)
+                        return
                 global_step += 1
                 if step + 1 >= steps_per_epoch:
                     break
             if local_rank == 0:
-                torch.save(model.state_dict(), f"gpt_epoch{epoch}.pth")
+                save(model, global_step)
     except KeyboardInterrupt:
-        torch.save(
-            model.module.state_dict(),
-            f"checkpoint_step{global_step}.pth"
-        )
-        print(f"⚡ Saved checkpoint at step {global_step}")
-
+        save(model, global_step)
     torch.save(model.module.tok_emb.weight.cpu(), "embed_matrix.pth")
     if "loss" in locals():
         print("⚡ Training done.  Final loss:", loss.item())
@@ -116,4 +125,4 @@ def train(epochs: int = 3,
 
 
 if __name__ == "__main__":
-    train(epochs=3)
+    train(epochs=10)
