@@ -2,6 +2,7 @@ import os
 import re
 import sys
 import time
+from typing import Optional
 
 import torch, torch.nn as nn
 from datasets import load_dataset, DownloadConfig
@@ -13,6 +14,25 @@ from GPT import GPTConfig, GPT
 from tokenizer import tokenizer, collate_batch, BOS_ID, EOS_ID, PAD_ID
 import bitsandbytes as bnb
 from transformers import get_cosine_schedule_with_warmup
+import argparse
+
+
+def get_args():
+    p = argparse.ArgumentParser()
+    p.add_argument('--resume',
+                   type=str,
+                   default=None,
+                   help='Path to a .pth checkpoint to load')
+    p.add_argument('--epochs',
+                   type=int,
+                   default=10)
+    p.add_argument('--batch_size',
+                   type=int,
+                   default=8)
+    p.add_argument('--lr',
+                   type=float,
+                   default=3e-4)
+    return p.parse_args()
 
 
 def save(model, step):
@@ -23,9 +43,11 @@ def save(model, step):
     print(f"⚡ Saved checkpoint at step {step}")
 
 
-def train(epochs: int = 3,
+def train(resume: Optional[str],
+          epochs: int = 3,
           batch_size: int = 8,
-          lr: float = 3e-4):
+          lr: float = 3e-4,
+          ):
     dist.init_process_group("nccl")
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.set_num_threads(4)
@@ -42,6 +64,11 @@ def train(epochs: int = 3,
     bos_id, eos_id, pad_id = (tokenizer.token_to_id(t) for t in ["[BOS]", "[EOS]", "[PAD]"])
     cfg = GPTConfig(vocab_size=tokenizer.get_vocab_size())
     model = GPT(cfg).to(device)
+    if resume and os.path.isfile(resume):
+        state = torch.load(resume, map_location=device)
+        model.load_state_dict(state)
+        print(f"⚡ Loaded weights from {resume}")
+    model.to(device)
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank])
     opt = bnb.optim.AdamW32bit(model.parameters(),
                                lr=lr,
@@ -131,4 +158,10 @@ def train(epochs: int = 3,
 
 
 if __name__ == "__main__":
-    train(epochs=10)
+    args = get_args()
+    train(
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        lr=args.lr,
+        resume=args.resume
+    )
