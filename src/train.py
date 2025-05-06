@@ -28,10 +28,10 @@ def get_args():
                    default=20)
     p.add_argument('--batch_size',
                    type=int,
-                   default=8)
+                   default=32)
     p.add_argument('--lr',
                    type=float,
-                   default=15e-4)
+                   default=1.5e-4)
     return p.parse_args()
 
 
@@ -46,7 +46,7 @@ def save(model, step):
 def train(resume: Optional[str],
           epochs: int = 3,
           batch_size: int = 2,
-          lr: float = 1e-4,
+          lr: float = 1.5e-4,
           ):
 
     dist.init_process_group("nccl")
@@ -139,7 +139,7 @@ def train(resume: Optional[str],
                     avg_loss = sum(losses) / len(losses)
                     print(
                         f"epoch {epoch} step {global_step} loss {sum(losses) / len(losses):.4f} lr = {scheduler.get_last_lr()[0]:.5}")
-                    if len(losses) > 10:
+                    if len(losses) > 5:
                         losses.pop(-1)
                     if avg_loss < 3.0:
                         save(model, global_step)
