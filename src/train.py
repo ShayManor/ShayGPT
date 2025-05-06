@@ -45,7 +45,7 @@ def save(model, step):
 
 def train(resume: Optional[str],
           epochs: int = 3,
-          batch_size: int = 8,
+          batch_size: int = 2,
           lr: float = 3e-4,
           ):
     dist.init_process_group("nccl")
