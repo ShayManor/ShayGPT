@@ -24,7 +24,7 @@ def save(model, step):
 
 
 def train(epochs: int = 3,
-          batch_size: int = 2,
+          batch_size: int = 8,
           lr: float = 3e-4):
     dist.init_process_group("nccl")
     torch.backends.cuda.matmul.allow_tf32 = True
@@ -50,7 +50,7 @@ def train(epochs: int = 3,
                                eps=1e-8)
     accum_steps = 16
     total_steps = steps_per_epoch * epochs
-    warmup_steps = int(0.08 * total_steps)
+    warmup_steps = int(0.05 * total_steps)
     scheduler = get_cosine_schedule_with_warmup(opt, warmup_steps, total_steps)
     pad_id = tokenizer.token_to_id("[PAD]")
     if pad_id is None:
