@@ -64,12 +64,12 @@ def train(resume: Optional[str],
     bos_id, eos_id, pad_id = (tokenizer.token_to_id(t) for t in ["[BOS]", "[EOS]", "[PAD]"])
     cfg = GPTConfig(vocab_size=tokenizer.get_vocab_size())
     model = GPT(cfg).to(device)
+    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank])
     if resume and os.path.isfile(resume):
         state = torch.load(resume, map_location=device)
         model.load_state_dict(state)
         print(f"⚡ Loaded weights from {resume}")
     model.to(device)
-    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank])
     opt = bnb.optim.AdamW32bit(model.parameters(),
                                lr=lr,
                                betas=(0.9, 0.95),
