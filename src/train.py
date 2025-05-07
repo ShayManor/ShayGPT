@@ -49,7 +49,6 @@ def train(resume: Optional[str],
           batch_size: int = 2,
           lr: float = 5e-5,
           ):
-
     dist.init_process_group("nccl")
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.set_num_threads(4)
@@ -88,14 +87,18 @@ def train(resume: Optional[str],
         raise RuntimeError("PAD token not found in tokenizer!")
     global_step = 0
     losses = []
-    stream = load_dataset("oscar", "unshuffled_deduplicated_en", streaming=True)
+    stream = load_dataset("oscar",
+                          "unshuffled_deduplicated_en",
+                          trust_remote_code=True,
+                          streaming=True)
 
     def clean_example(ex):
-        txt = ex["text"]
+        txt = ex["text"] if isinstance(ex, dict) else ex
         if len(txt) < 200:
             return False
         ascii_chars = sum(1 for c in txt if ord(c) < 128)
-        return ascii_chars / len(txt) >= 0.99
+        return ascii_chars / len(txt) >= 0.95
+
     stream = stream.filter(clean_example, batched=False)
 
     dataset = StreamDataset(stream, world_size, rank)
