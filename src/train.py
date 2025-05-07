@@ -73,6 +73,7 @@ def train(resume: Optional[str],
     model.to(device)
     scaler = torch.amp.GradScaler('cuda')
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank])
+    model.gradient_checkpointing_enable()
     opt = bnb.optim.AdamW8bit(model.parameters(),
                                lr=lr,
                                betas=(0.9, 0.98),
@@ -99,7 +100,7 @@ def train(resume: Optional[str],
     loader = DataLoader(
         dataset,
         batch_size=batch_size,
-        num_workers=4,
+        num_workers=1,
         pin_memory=True,
         persistent_workers=True,
         prefetch_factor=4,
@@ -114,7 +115,7 @@ def train(resume: Optional[str],
                 # att = att.to(device, non_blocking=True)
                 input = ids[:, :-1]
                 target = ids[:, 1:]
-                with autocast(device_type="cuda", dtype=torch.float16):
+                with autocast(device_type="cuda", dtype=torch.bfloat16):
                     logits = model(input)
                     flat_logits = logits.reshape(-1, logits.size(-1))
                     flat_target = target.reshape(-1)

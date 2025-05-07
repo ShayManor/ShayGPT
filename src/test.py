@@ -1,24 +1,27 @@
 import torch
-from tokenizer import tokenizer
+from tokenizer import tokenizer, BOS_ID
 from GPT import GPTConfig, GPT
 
-cfg = GPTConfig(
-    vocab_size=tokenizer.get_vocab_size())
+cfg = GPTConfig(vocab_size=50_000)
 model = GPT(cfg)
-total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-print(f"Total parameters: {total_params:,} ~= {total_params / 1e6:.2f} M parameters")
-exit(0)
-model.load_state_dict(torch.load("data/e9.pth", map_location=torch.device('cpu')))
+# total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+# print(f"Total parameters: {total_params:,} ~= {total_params / 1e6:.2f} M parameters")
+model.load_state_dict(torch.load("data/checkpoint3.pth", map_location=torch.device('cpu')))
 model.eval()
 
-prompt = "Oliver is a beacon of "
+prompt = "How am I feeling about my AP test tomorrow? "
 ids = tokenizer.encode(prompt).ids
+ids.insert(0, BOS_ID)
 for _ in range(25):
-    inp = torch.tensor([ids])
+    inp = torch.tensor([ids], dtype=torch.long)
     logits = model(inp)[:, -1, :]
+    sep_id = tokenizer.token_to_id("[SEP]")
+    logits[0, sep_id] = -1e9
+
     next_id = torch.multinomial(
-        torch.softmax(logits / 0.8, dim=-1), num_samples=1).item()
+        torch.softmax(logits / 0.4, dim=-1), num_samples=1).item()
     ids.append(next_id)
-    if next_id == tokenizer.token_to_id("[EOS]"):
-        break
+    print(next_id)
+    # if next_id == tokenizer.token_to_id("[EOS]"):
+    #     break
 print(tokenizer.decode(ids))
