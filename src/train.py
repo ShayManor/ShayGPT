@@ -30,7 +30,7 @@ def get_args():
                    default=20)
     p.add_argument('--batch_size',
                    type=int,
-                   default=16)
+                   default=32)
     p.add_argument('--lr',
                    type=float,
                    default=5e-5)
@@ -79,7 +79,7 @@ def train(resume: Optional[str],
                               betas=(0.9, 0.995),
                               weight_decay=0.01,
                               eps=1e-7)
-    accum_steps = 16
+    accum_steps = 8
     total_steps = steps_per_epoch * epochs
     warmup_steps = int(0.02 * total_steps)
     scheduler = get_cosine_schedule_with_warmup(opt, warmup_steps, total_steps)
@@ -89,18 +89,11 @@ def train(resume: Optional[str],
     global_step = 0
     losses = []
     hf_stream = load_dataset("oscar",
-                          "unshuffled_deduplicated_en",
-                          trust_remote_code=True,
-                          streaming=True)
+                             "unshuffled_deduplicated_en",
+                             trust_remote_code=True,
+                             streaming=True)
     stream = hf_stream if not hasattr(hf_stream, "keys") else hf_stream["train"]
-    print("=== RAW STREAM PREVIEW ===")
-    for i, rec in enumerate(itertools.islice(stream, 10)):
-        if isinstance(rec, dict):
-            txt = rec.get("text", "")
-            print(f"{i:2d}: [dict] keys={list(rec.keys())}, len={len(txt)} →", txt[:100].replace("\n", " "))
-        else:
-            print(f"{i:2d}: [str] len={len(rec)} →", rec[:100].replace("\n", " "))
-    print("===========================")
+
     def clean_example(ex):
         txt = ex["text"] if isinstance(ex, dict) else ex
         if len(txt) < 200:
