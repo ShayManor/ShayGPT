@@ -32,7 +32,7 @@ def get_args():
                    default=16)
     p.add_argument('--lr',
                    type=float,
-                   default=1.5e-4)
+                   default=5e-5)
     return p.parse_args()
 
 
@@ -47,7 +47,7 @@ def save(model, step):
 def train(resume: Optional[str],
           epochs: int = 3,
           batch_size: int = 2,
-          lr: float = 1.5e-4,
+          lr: float = 5e-5,
           ):
 
     dist.init_process_group("nccl")
@@ -76,8 +76,8 @@ def train(resume: Optional[str],
     model = DistributedDataParallel(model, device_ids=[local_rank])
     opt = bnb.optim.AdamW8bit(model.parameters(),
                               lr=lr,
-                              betas=(0.9, 0.98),
-                              weight_decay=0.02,
+                              betas=(0.9, 0.995),
+                              weight_decay=0.01,
                               eps=1e-7)
     accum_steps = 16
     total_steps = steps_per_epoch * epochs
@@ -88,20 +88,14 @@ def train(resume: Optional[str],
         raise RuntimeError("PAD token not found in tokenizer!")
     global_step = 0
     losses = []
-    stream = load_dataset(
-        "togethercomputer/RedPajama-Data-1T",
-        "default",
-        split="train",
-        trust_remote_code=True,
-        streaming=True
-    )
+    stream = load_dataset("oscar", "unshuffled_deduplicated_en", streaming=True)
 
     def clean_example(ex):
         txt = ex["text"]
         if len(txt) < 200:
             return False
         ascii_chars = sum(1 for c in txt if ord(c) < 128)
-        return ascii_chars / len(txt) >= 0.9
+        return ascii_chars / len(txt) >= 0.99
     stream = stream.filter(clean_example, batched=False)
 
     dataset = StreamDataset(stream, world_size, rank)
