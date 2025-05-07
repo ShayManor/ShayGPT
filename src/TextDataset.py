@@ -44,7 +44,15 @@ class StreamDataset(IterableDataset):
         for i, rec in enumerate(self.hf_stream):
             if i % self.world_size != self.rank:
                 continue
-            yield rec["text"]
+            if isinstance(rec, dict):
+                text = rec.get("text", None)
+                if text is None:
+                    continue
+            elif isinstance(rec, str):
+                text = rec
+            else:
+                continue
+            yield text
 
     def __len__(self):
         return 100000  # arbitrary
