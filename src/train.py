@@ -65,7 +65,6 @@ def train(resume: Optional[str],
     bos_id, eos_id, pad_id = (tokenizer.token_to_id(t) for t in ["[BOS]", "[EOS]", "[PAD]"])
     cfg = GPTConfig(vocab_size=tokenizer.get_vocab_size())
     model = GPT(cfg)
-    model.gradient_checkpointing_enable()
     if resume and os.path.isfile(resume):
         state = torch.load(resume, map_location="cpu")
         model.load_state_dict(state, strict=False)
@@ -74,6 +73,7 @@ def train(resume: Optional[str],
     model.to(device)
     scaler = torch.amp.GradScaler('cuda')
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank])
+    model.module.gradient_checkpointing_enable()
     opt = bnb.optim.AdamW8bit(model.parameters(),
                                lr=lr,
                                betas=(0.9, 0.98),
