@@ -75,10 +75,10 @@ def train(resume: Optional[str],
     scaler = torch.amp.GradScaler('cuda')
     model = DistributedDataParallel(model, device_ids=[local_rank])
     opt = bnb.optim.AdamW8bit(model.parameters(),
-                               lr=lr,
-                               betas=(0.9, 0.98),
-                               weight_decay=0.02,
-                               eps=1e-7)
+                              lr=lr,
+                              betas=(0.9, 0.98),
+                              weight_decay=0.02,
+                              eps=1e-7)
     accum_steps = 16
     total_steps = steps_per_epoch * epochs
     warmup_steps = int(0.02 * total_steps)
@@ -96,6 +96,14 @@ def train(resume: Optional[str],
         streaming=True
     )
 
+    def clean_example(ex):
+        txt = ex["text"]
+        if len(txt) < 200:
+            return False
+        ascii_chars = sum(1 for c in txt if ord(c) < 128)
+        return ascii_chars / len(txt) >= 0.9
+    stream = stream.filter(clean_example, batched=False)
+
     dataset = StreamDataset(stream, world_size, rank)
     loader = DataLoader(
         dataset,
@@ -112,7 +120,6 @@ def train(resume: Optional[str],
             for step, ids in enumerate(loader):
                 cur_time = time.time()
                 ids = ids.to(device, non_blocking=True)
-                # att = att.to(device, non_blocking=True)
                 input = ids[:, :-1]
                 target = ids[:, 1:]
                 with autocast(device_type="cuda", dtype=torch.bfloat16):
