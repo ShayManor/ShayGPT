@@ -1,3 +1,4 @@
+import itertools
 import os
 import re
 import sys
@@ -87,14 +88,19 @@ def train(resume: Optional[str],
         raise RuntimeError("PAD token not found in tokenizer!")
     global_step = 0
     losses = []
-    stream = load_dataset("oscar",
+    hf_stream = load_dataset("oscar",
                           "unshuffled_deduplicated_en",
                           trust_remote_code=True,
                           streaming=True)
-    raw_iter = stream.take(10)  # HuggingFace streaming: take first 10 examples
-    for rec in raw_iter:
-        print(type(rec), rec if isinstance(rec, str) else list(rec.keys()),
-              "len:", len(rec) if isinstance(rec, str) else len(rec.get("text", "")))
+    stream = hf_stream if not hasattr(hf_stream, "keys") else hf_stream["train"]
+    print("=== RAW STREAM PREVIEW ===")
+    for i, rec in enumerate(itertools.islice(stream, 10)):
+        if isinstance(rec, dict):
+            txt = rec.get("text", "")
+            print(f"{i:2d}: [dict] keys={list(rec.keys())}, len={len(txt)} →", txt[:100].replace("\n", " "))
+        else:
+            print(f"{i:2d}: [str] len={len(rec)} →", rec[:100].replace("\n", " "))
+    print("===========================")
     def clean_example(ex):
         txt = ex["text"] if isinstance(ex, dict) else ex
         if len(txt) < 200:
