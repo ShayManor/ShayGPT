@@ -63,7 +63,7 @@ class GPT(nn.Module):
 
         attn_mask = self.causal_mask[:T, :T]  # [T,T], on same device later
         for blk in self.blocks:
-            def run_block():
+            def run_block(x):
                 a = blk["attn"](
                     blk["ln1"](x),
                     blk["ln1"](x),
