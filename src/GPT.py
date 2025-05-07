@@ -1,6 +1,5 @@
 import torch
 from torch import nn
-from torch.utils.checkpoint import checkpoint
 
 
 class GPTConfig:
@@ -20,7 +19,6 @@ class GPT(nn.Module):
         self.cfg = cfg
         self.tok_emb = nn.Embedding(cfg.vocab_size, cfg.d_model)
         self.pos_emb = nn.Parameter(torch.zeros(1, cfg.max_len, cfg.d_model))
-        self.use_gradient_checkpointing = False
 
         self.blocks = nn.ModuleList([
             self._build_block() for _ in range(cfg.n_layer)
@@ -55,7 +53,6 @@ class GPT(nn.Module):
             if getattr(m, "bias", None) is not None:
                 nn.init.zeros_(m.bias)
 
-    # ---------- forward ----------
     def forward(self, idx):  # idx: [B,T]
         B, T = idx.shape
         assert T <= self.cfg.max_len
@@ -63,16 +60,12 @@ class GPT(nn.Module):
 
         attn_mask = self.causal_mask[:T, :T]  # [T,T], on same device later
         for blk in self.blocks:
-            def run_block(x):
-                a = blk["attn"](
-                    blk["ln1"](x),
-                    blk["ln1"](x),
-                    blk["ln1"](x),
-                    attn_mask=attn_mask
-                )[0]
-                m = x + blk["mlp"](blk["ln2"](x))
-                return x + a + m
-            x = checkpoint(run_block, x)
-
+            x = x + blk["attn"](
+                blk["ln1"](x),
+                blk["ln1"](x),
+                blk["ln1"](x),
+                attn_mask=attn_mask
+            )[0]
+            x = x + blk["mlp"](blk["ln2"](x))
         x = self.ln_f(x)
         return self.lm_head(x)  # [B,T,V]
