@@ -141,7 +141,7 @@ def train(resume: Optional[str],
                         f"epoch {epoch} step {global_step} loss {sum(losses) / len(losses):.4f} lr = {scheduler.get_last_lr()[0]:.5} time = {time.time() - cur_time}")
                     if len(losses) > 5:
                         losses.pop(-1)
-                    if avg_loss < 3.0:
+                    if avg_loss < 1.2:
                         save(model, global_step)
                         return
                 global_step += 1
