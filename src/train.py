@@ -73,7 +73,7 @@ def train(resume: Optional[str],
         del state
     model.to(device)
     scaler = torch.amp.GradScaler('cuda')
-    model = DistributedDataParallel(model, device_ids=[local_rank])
+    model = DistributedDataParallel(model, device_ids=[local_rank], static_graph=True)
     opt = bnb.optim.AdamW8bit(model.parameters(),
                                lr=lr,
                                betas=(0.9, 0.98),
