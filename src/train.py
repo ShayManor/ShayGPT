@@ -30,7 +30,7 @@ def get_args():
                    default=20)
     p.add_argument('--batch_size',
                    type=int,
-                   default=32)
+                   default=16)
     p.add_argument('--lr',
                    type=float,
                    default=5e-5)
@@ -79,7 +79,7 @@ def train(resume: Optional[str],
                               betas=(0.9, 0.995),
                               weight_decay=0.01,
                               eps=1e-7)
-    accum_steps = 8
+    accum_steps = 16
     total_steps = steps_per_epoch * epochs
     warmup_steps = int(0.02 * total_steps)
     scheduler = get_cosine_schedule_with_warmup(opt, warmup_steps, total_steps)
