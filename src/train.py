@@ -91,7 +91,10 @@ def train(resume: Optional[str],
                           "unshuffled_deduplicated_en",
                           trust_remote_code=True,
                           streaming=True)
-
+    raw_iter = stream.take(10)  # HuggingFace streaming: take first 10 examples
+    for rec in raw_iter:
+        print(type(rec), rec if isinstance(rec, str) else list(rec.keys()),
+              "len:", len(rec) if isinstance(rec, str) else len(rec.get("text", "")))
     def clean_example(ex):
         txt = ex["text"] if isinstance(ex, dict) else ex
         if len(txt) < 200:
