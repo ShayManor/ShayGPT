@@ -7,6 +7,7 @@ from typing import Optional
 import torch, torch.nn as nn
 from datasets import load_dataset, DownloadConfig
 from torch.amp import autocast
+from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader
 import torch.distributed as dist
 from TextDataset import TextDataset, StreamDataset
@@ -72,8 +73,7 @@ def train(resume: Optional[str],
         del state
     model.to(device)
     scaler = torch.amp.GradScaler('cuda')
-    model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank])
-    model.module.gradient_checkpointing_enable()
+    model = DistributedDataParallel(model, device_ids=[local_rank])
     opt = bnb.optim.AdamW8bit(model.parameters(),
                                lr=lr,
                                betas=(0.9, 0.98),
