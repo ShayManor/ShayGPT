@@ -1,3 +1,5 @@
+from typing import Optional
+
 import torch
 from torch import nn
 
@@ -5,10 +7,11 @@ from torch import nn
 class GPTConfig:
     def __init__(self,
                  vocab_size,
+                 pad_id: Optional[str],
                  n_layer=20,
                  n_head=20,
                  d_model=1280,
-                 dropout=0.12,
+                 dropout=0.06,
                  max_len=1024):
         self.__dict__.update(locals())
 
@@ -56,15 +59,17 @@ class GPT(nn.Module):
     def forward(self, idx):  # idx: [B,T]
         B, T = idx.shape
         assert T <= self.cfg.max_len
+        pad_mask = (idx == self.cfg.pad_id)  # [B,T]  True on PADs
+        attn_mask = self.causal_mask[:T, :T].to(idx.device)
         x = self.tok_emb(idx) + self.pos_emb[:, :T]  # [B,T,d]
 
-        attn_mask = self.causal_mask[:T, :T]  # [T,T], on same device later
         for blk in self.blocks:
             x = x + blk["attn"](
                 blk["ln1"](x),
                 blk["ln1"](x),
                 blk["ln1"](x),
-                attn_mask=attn_mask
+                attn_mask=attn_mask,
+                key_padding_mask=pad_mask,
             )[0]
             x = x + blk["mlp"](blk["ln2"](x))
         x = self.ln_f(x)

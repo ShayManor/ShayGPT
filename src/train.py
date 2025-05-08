@@ -47,7 +47,7 @@ def save(model, step):
 
 def train(resume: Optional[str],
           epochs: int = 3,
-          batch_size: int = 2,
+          batch_size: int = 16,
           lr: float = 5e-5,
           ):
     dist.init_process_group("nccl")
@@ -64,7 +64,7 @@ def train(resume: Optional[str],
     world_size = dist.get_world_size()
     steps_per_epoch = 10_000
     bos_id, eos_id, pad_id = (tokenizer.token_to_id(t) for t in ["[BOS]", "[EOS]", "[PAD]"])
-    cfg = GPTConfig(vocab_size=tokenizer.get_vocab_size())
+    cfg = GPTConfig(vocab_size=tokenizer.get_vocab_size(), pad_id=tokenizer.token_to_id('[PAD]'))
     model = GPT(cfg)
     if resume and os.path.isfile(resume):
         state = torch.load(resume, map_location="cpu")
