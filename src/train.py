@@ -1,4 +1,3 @@
-import itertools
 import os
 import re
 import sys
@@ -6,16 +5,16 @@ import time
 from typing import Optional
 
 import torch, torch.nn as nn
-from datasets import load_dataset, DownloadConfig, interleave_datasets, Features, Value
+from datasets import load_dataset, DownloadConfig
 from torch.amp import autocast
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader
 import torch.distributed as dist
 from TextDataset import TextDataset, StreamDataset
-from tokenizer import tokenizer, BOS_ID, EOS_ID, PAD_ID
 from GPT import GPTConfig, GPT
+from tokenizer import tokenizer, collate_batch, BOS_ID, EOS_ID, PAD_ID
 import bitsandbytes as bnb
-from transformers import get_cosine_schedule_with_warmup, get_linear_schedule_with_warmup
+from transformers import get_cosine_schedule_with_warmup
 import argparse
 
 
@@ -30,10 +29,10 @@ def get_args():
                    default=20)
     p.add_argument('--batch_size',
                    type=int,
-                   default=4)
+                   default=16)
     p.add_argument('--lr',
                    type=float,
-                   default=8e-5)
+                   default=1.5e-4)
     return p.parse_args()
 
 
@@ -47,9 +46,10 @@ def save(model, step):
 
 def train(resume: Optional[str],
           epochs: int = 3,
-          batch_size: int = 16,
-          lr: float = 5e-5,
+          batch_size: int = 2,
+          lr: float = 1.5e-4,
           ):
+
     dist.init_process_group("nccl")
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.set_num_threads(4)
@@ -62,11 +62,9 @@ def train(resume: Optional[str],
     print("Using device:", device)
     rank = dist.get_rank()
     world_size = dist.get_world_size()
-    # if PAD_ID is None:
-    #     tokenizer.add_special_tokens({"pad_token": tokenizer.eos_token})
-    #     PAD_ID = tokenizer.pad_token_id
     steps_per_epoch = 10_000
-    cfg = GPTConfig(vocab_size=tokenizer.vocab_size, pad_id=PAD_ID)
+    bos_id, eos_id, pad_id = (tokenizer.token_to_id(t) for t in ["[BOS]", "[EOS]", "[PAD]"])
+    cfg = GPTConfig(vocab_size=tokenizer.get_vocab_size())
     model = GPT(cfg)
     if resume and os.path.isfile(resume):
         state = torch.load(resume, map_location="cpu")
@@ -77,62 +75,27 @@ def train(resume: Optional[str],
     scaler = torch.amp.GradScaler('cuda')
     model = DistributedDataParallel(model, device_ids=[local_rank])
     opt = bnb.optim.AdamW8bit(model.parameters(),
-                              lr=lr,
-                              betas=(0.9, 0.995),
-                              weight_decay=0.01,
-                              eps=1e-7)
+                               lr=lr,
+                               betas=(0.9, 0.98),
+                               weight_decay=0.02,
+                               eps=1e-7)
     accum_steps = 16
     total_steps = steps_per_epoch * epochs
-    warmup_steps = int(0.1 * total_steps)
-    scheduler = get_linear_schedule_with_warmup(opt, warmup_steps, total_steps)
-    if PAD_ID is None:
+    warmup_steps = int(0.02 * total_steps)
+    scheduler = get_cosine_schedule_with_warmup(opt, warmup_steps, total_steps)
+    pad_id = tokenizer.token_to_id("[PAD]")
+    if pad_id is None:
         raise RuntimeError("PAD token not found in tokenizer!")
     global_step = 0
     losses = []
-    def clean_example(ex):
-        txt = ex["text"] if isinstance(ex, dict) else ex
-        if len(txt) < 200:
-            return False
-        if re.search(r"<\/?html>|http[s]?://|\{.+?\}", txt):
-            return False
-        ascii_chars = sum(1 for c in txt if ord(c) < 128)
-        return ascii_chars / len(txt) >= 0.95
+    stream = load_dataset(
+        "togethercomputer/RedPajama-Data-1T",
+        "default",
+        split="train",
+        trust_remote_code=True,
+        streaming=True
+    )
 
-    def collate_batch(texts):
-        t = tokenizer(texts,
-                      return_tensors="pt",
-                      padding=True,
-                      truncation=True,
-                      max_length=512)
-        return t.input_ids, t.attention_mask
-
-    dl_cfg = DownloadConfig(max_retries=100, resume_download=True)
-    token = os.getenv("HF_TOKEN")
-    print(token)
-    ds = load_dataset("oscar",
-                      "unshuffled_deduplicated_en",
-                      split="train",
-                      trust_remote_code=True,
-                      download_config=dl_cfg,
-                      streaming=True,
-                      token=token
-                      )
-
-    stream = ds.filter(clean_example, batched=False)
-    wiki = load_dataset("wikitext",
-                        "wikitext-103-v1",
-                        trust_remote_code=True,
-                        download_config=dl_cfg,
-                        streaming=True,
-                        )["train"]
-    books = load_dataset("bookcorpus",
-                         split="train",
-                         trust_remote_code=True,
-                         download_config=dl_cfg,
-                         streaming=True,
-                         )
-    stream = interleave_datasets([stream, wiki, books], probabilities=[0.7, 0.15, 0.15])
-    stream = stream.shuffle(buffer_size=50_000, seed=2269)
     dataset = StreamDataset(stream, world_size, rank)
     loader = DataLoader(
         dataset,
@@ -141,27 +104,26 @@ def train(resume: Optional[str],
         pin_memory=True,
         persistent_workers=True,
         prefetch_factor=4,
-        collate_fn=lambda batch: collate_batch(batch),
+        collate_fn=lambda ex: collate_batch(ex, BOS_ID, EOS_ID, PAD_ID),
     )
     try:
         for epoch in range(epochs):
             start_time = time.time()
-            for step, (ids, attn_mask) in enumerate(loader):
+            for step, ids in enumerate(loader):
                 cur_time = time.time()
                 ids = ids.to(device, non_blocking=True)
-                attn_mask = attn_mask.to(device, non_blocking=True)
-                pad_mask = (attn_mask == 0)[:, :-1]
+                # att = att.to(device, non_blocking=True)
                 input = ids[:, :-1]
                 target = ids[:, 1:]
                 with autocast(device_type="cuda", dtype=torch.bfloat16):
-                    logits = model(input, pad_mask)
+                    logits = model(input)
                     flat_logits = logits.reshape(-1, logits.size(-1))
                     flat_target = target.reshape(-1)
                     loss = nn.functional.cross_entropy(
-                        flat_logits.float(),
+                        flat_logits,
                         flat_target,
-                        ignore_index=PAD_ID,
-                        label_smoothing=0.1,
+                        ignore_index=pad_id,
+                        label_smoothing=0.0,
                     )
                 scaler.scale(loss).backward()
                 if (step + 1) % accum_steps == 0:
@@ -184,7 +146,6 @@ def train(resume: Optional[str],
                         return
                 global_step += 1
                 if step + 1 >= steps_per_epoch:
-                    print(f"Tokens/step = {batch_size * 512 * accum_steps}")
                     print(f'Epoch time: {time.time() - start_time}')
                     break
             if local_rank == 0:
