@@ -12,9 +12,10 @@ from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader
 import torch.distributed as dist
 from TextDataset import TextDataset, StreamDataset
+from tokenizer import tokenizer, BOS_ID, EOS_ID, PAD_ID
 from GPT import GPTConfig, GPT
 import bitsandbytes as bnb
-from transformers import get_cosine_schedule_with_warmup, AutoTokenizer, get_linear_schedule_with_warmup
+from transformers import get_cosine_schedule_with_warmup, get_linear_schedule_with_warmup
 import argparse
 
 
@@ -61,16 +62,11 @@ def train(resume: Optional[str],
     print("Using device:", device)
     rank = dist.get_rank()
     world_size = dist.get_world_size()
-    tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neo-125M")
-    bos_id = tokenizer.bos_token_id
-    eos_id = tokenizer.eos_token_id
-    pad_id = tokenizer.pad_token_id
-    if pad_id is None:
-        tokenizer.add_special_tokens({"pad_token": tokenizer.eos_token})
-        pad_id = tokenizer.pad_token_id
+    # if PAD_ID is None:
+    #     tokenizer.add_special_tokens({"pad_token": tokenizer.eos_token})
+    #     PAD_ID = tokenizer.pad_token_id
     steps_per_epoch = 10_000
-    # bos_id, eos_id, pad_id = (tokenizer.token_to_id(t) for t in ["[BOS]", "[EOS]", "[PAD]"])
-    cfg = GPTConfig(vocab_size=tokenizer.vocab_size, pad_id=pad_id)
+    cfg = GPTConfig(vocab_size=tokenizer.vocab_size, pad_id=PAD_ID)
     model = GPT(cfg)
     if resume and os.path.isfile(resume):
         state = torch.load(resume, map_location="cpu")
@@ -89,7 +85,7 @@ def train(resume: Optional[str],
     total_steps = steps_per_epoch * epochs
     warmup_steps = int(0.1 * total_steps)
     scheduler = get_linear_schedule_with_warmup(opt, warmup_steps, total_steps)
-    if pad_id is None:
+    if PAD_ID is None:
         raise RuntimeError("PAD token not found in tokenizer!")
     global_step = 0
     losses = []
@@ -136,7 +132,7 @@ def train(resume: Optional[str],
                          )
     stream = stream.filter(clean_example, batched=False)
     stream = interleave_datasets([stream, wiki, books], probabilities=[0.7, 0.15, 0.15])
-    stream = stream.shuffle(buffer_size=500_000, seed=2269)
+    stream = stream.shuffle(buffer_size=50_000, seed=2269)
     dataset = StreamDataset(stream, world_size, rank)
     loader = DataLoader(
         dataset,
@@ -164,7 +160,7 @@ def train(resume: Optional[str],
                     loss = nn.functional.cross_entropy(
                         flat_logits,
                         flat_target,
-                        ignore_index=pad_id,
+                        ignore_index=PAD_ID,
                         label_smoothing=0.1,
                     )
                 scaler.scale(loss).backward()
