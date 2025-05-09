@@ -7,7 +7,7 @@ from torch import nn
 class GPTConfig:
     def __init__(self,
                  vocab_size,
-                 pad_id: Optional[str],
+                 pad_id: Optional[int],
                  n_layer=20,
                  n_head=20,
                  d_model=1280,

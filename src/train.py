@@ -17,8 +17,6 @@ import bitsandbytes as bnb
 from transformers import get_cosine_schedule_with_warmup, AutoTokenizer
 import argparse
 
-from tokenizer import collate_batch, BOS_ID, EOS_ID, PAD_ID
-
 
 def get_args():
     p = argparse.ArgumentParser()
@@ -34,7 +32,7 @@ def get_args():
                    default=16)
     p.add_argument('--lr',
                    type=float,
-                   default=5e-5)
+                   default=8e-5)
     return p.parse_args()
 
 
@@ -72,7 +70,7 @@ def train(resume: Optional[str],
         pad_id = tokenizer.pad_token_id
     steps_per_epoch = 10_000
     # bos_id, eos_id, pad_id = (tokenizer.token_to_id(t) for t in ["[BOS]", "[EOS]", "[PAD]"])
-    cfg = GPTConfig(vocab_size=tokenizer.get_vocab_size(), pad_id=tokenizer.token_to_id('[PAD]'))
+    cfg = GPTConfig(vocab_size=tokenizer.get_vocab_size(), pad_id=pad_id)
     model = GPT(cfg)
     if resume and os.path.isfile(resume):
         state = torch.load(resume, map_location="cpu")
@@ -83,15 +81,14 @@ def train(resume: Optional[str],
     scaler = torch.amp.GradScaler('cuda')
     model = DistributedDataParallel(model, device_ids=[local_rank])
     opt = bnb.optim.AdamW8bit(model.parameters(),
-                              lr=lr,
-                              betas=(0.9, 0.995),
-                              weight_decay=0.01,
-                              eps=1e-7)
+                               lr=lr,
+                               betas=(0.9, 0.995),
+                               weight_decay=0.01,
+                               eps=1e-7)
     accum_steps = 16
     total_steps = steps_per_epoch * epochs
-    warmup_steps = int(0.02 * total_steps)
+    warmup_steps = int(0.1 * total_steps)
     scheduler = get_cosine_schedule_with_warmup(opt, warmup_steps, total_steps)
-    pad_id = tokenizer.token_to_id("[PAD]")
     if pad_id is None:
         raise RuntimeError("PAD token not found in tokenizer!")
     global_step = 0
@@ -111,11 +108,19 @@ def train(resume: Optional[str],
         ascii_chars = sum(1 for c in txt if ord(c) < 128)
         return ascii_chars / len(txt) >= 0.95
 
+    def collate_batch(texts):
+        t = tokenizer(texts,
+                      return_tensors="pt",
+                      padding=True,
+                      truncation=True,
+                      max_length=512)
+        return t.input_ids
+
     wiki = load_dataset("wikitext", "wikitext-103-v1", streaming=True)["train"]
     books = load_dataset("bookcorpus", split="train", streaming=True)
     stream = stream.filter(clean_example, batched=False)
     stream = interleave_datasets([stream, wiki, books], probabilities=[0.7, 0.15, 0.15])
-    stream = stream.shuffle(buffer_size=10_000, seed=2269)
+    stream = stream.shuffle(buffer_size=500_000, seed=2269)
     dataset = StreamDataset(stream, world_size, rank)
     loader = DataLoader(
         dataset,
@@ -124,7 +129,7 @@ def train(resume: Optional[str],
         pin_memory=True,
         persistent_workers=True,
         prefetch_factor=4,
-        collate_fn=lambda ex: collate_batch(ex, BOS_ID, EOS_ID, PAD_ID),
+        collate_fn=lambda ex: collate_batch(ex["text"]),
     )
     try:
         for epoch in range(epochs):
@@ -142,7 +147,7 @@ def train(resume: Optional[str],
                         flat_logits,
                         flat_target,
                         ignore_index=pad_id,
-                        label_smoothing=0.0,
+                        label_smoothing=0.1,
                     )
                 scaler.scale(loss).backward()
                 if (step + 1) % accum_steps == 0:
