@@ -113,9 +113,8 @@ def train(resume: Optional[str],
                       truncation=True,
                       max_length=512)
         return t.input_ids, t.attention_mask
-    stream = ds.cast(Features({"text": Value("string")}))
-    stream = stream.filter(clean_example, batched=False)
 
+    stream = ds.filter(clean_example, batched=False)
     wiki = load_dataset("wikitext",
                         "wikitext-103-v1",
                         trust_remote_code=True,
@@ -130,7 +129,6 @@ def train(resume: Optional[str],
                          streaming=False,
                          cache_dir="/mnt/data/books"
                          )
-    stream = stream.filter(clean_example, batched=False)
     stream = interleave_datasets([stream, wiki, books], probabilities=[0.7, 0.15, 0.15])
     stream = stream.shuffle(buffer_size=50_000, seed=2269)
     dataset = StreamDataset(stream, world_size, rank)
