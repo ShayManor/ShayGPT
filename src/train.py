@@ -96,8 +96,6 @@ def train(resume: Optional[str],
                       download_config=dl_cfg,
                       streaming=True,
                       )
-    hf_stream = iter(ds)
-    stream = hf_stream if not hasattr(hf_stream, "keys") else hf_stream["train"]
 
     def clean_example(ex):
         txt = ex["text"] if isinstance(ex, dict) else ex
@@ -115,7 +113,7 @@ def train(resume: Optional[str],
                       truncation=True,
                       max_length=512)
         return t.input_ids, t.attention_mask
-
+    stream = ds.filter(clean_example)
     wiki = load_dataset("wikitext",
                         "wikitext-103-v1",
                         trust_remote_code=True,
