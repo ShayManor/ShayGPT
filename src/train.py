@@ -6,17 +6,18 @@ import time
 from typing import Optional
 
 import torch, torch.nn as nn
-from datasets import load_dataset, DownloadConfig
+from datasets import load_dataset, DownloadConfig, interleave_datasets
 from torch.amp import autocast
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader
 import torch.distributed as dist
 from TextDataset import TextDataset, StreamDataset
 from GPT import GPTConfig, GPT
-from tokenizer import tokenizer, collate_batch, BOS_ID, EOS_ID, PAD_ID
 import bitsandbytes as bnb
-from transformers import get_cosine_schedule_with_warmup
+from transformers import get_cosine_schedule_with_warmup, AutoTokenizer
 import argparse
+
+from src.tokenizer import collate_batch, BOS_ID, EOS_ID, PAD_ID
 
 
 def get_args():
@@ -62,6 +63,7 @@ def train(resume: Optional[str],
     print("Using device:", device)
     rank = dist.get_rank()
     world_size = dist.get_world_size()
+    tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neo-125M")
     steps_per_epoch = 10_000
     bos_id, eos_id, pad_id = (tokenizer.token_to_id(t) for t in ["[BOS]", "[EOS]", "[PAD]"])
     cfg = GPTConfig(vocab_size=tokenizer.get_vocab_size(), pad_id=tokenizer.token_to_id('[PAD]'))
@@ -98,11 +100,16 @@ def train(resume: Optional[str],
         txt = ex["text"] if isinstance(ex, dict) else ex
         if len(txt) < 200:
             return False
+        if re.search(r"<\/?html>|http[s]?://|\{.+?\}", txt):
+            return False
         ascii_chars = sum(1 for c in txt if ord(c) < 128)
         return ascii_chars / len(txt) >= 0.95
 
+    wiki = load_dataset("wikitext", "wikitext-103-v1", streaming=True)["train"]
+    books = load_dataset("bookcorpus", split="train", streaming=True)
     stream = stream.filter(clean_example, batched=False)
-
+    stream = interleave_datasets([stream, wiki, books], probabilities=[0.7, 0.15, 0.15])
+    stream = stream.shuffle(buffer_size=10_000, seed=2269)
     dataset = StreamDataset(stream, world_size, rank)
     loader = DataLoader(
         dataset,
