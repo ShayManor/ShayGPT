@@ -30,7 +30,7 @@ def get_args():
                    default=20)
     p.add_argument('--batch_size',
                    type=int,
-                   default=4)
+                   default=32)
     p.add_argument('--lr',
                    type=float,
                    default=8e-5)
@@ -107,12 +107,14 @@ def train(resume: Optional[str],
         return t.input_ids, t.attention_mask
 
     dl_cfg = DownloadConfig(max_retries=100, resume_download=True)
+    token = os.getenv("HF_TOKEN")
     ds = load_dataset("oscar",
                       "unshuffled_deduplicated_en",
                       split="train",
                       trust_remote_code=True,
                       download_config=dl_cfg,
                       streaming=True,
+                      token=token
                       )
 
     stream = ds.filter(clean_example, batched=False)
@@ -164,9 +166,9 @@ def train(resume: Optional[str],
                 if (step + 1) % accum_steps == 0:
                     scaler.unscale_(opt)
                     torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-                    scheduler.step()
                     scaler.step(opt)
                     scaler.update()
+                    scheduler.step()
                     opt.zero_grad(set_to_none=True)
 
                 if global_step % 100 == 0 and local_rank == 0:
