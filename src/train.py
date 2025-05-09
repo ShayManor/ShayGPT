@@ -91,6 +91,7 @@ def train(resume: Optional[str],
     losses = []
     dl_cfg = DownloadConfig(max_retries=100)
     ds = load_dataset("oscar",
+                      split="train"
                       "unshuffled_deduplicated_en",
                       trust_remote_code=True,
                       download_config=dl_cfg,
