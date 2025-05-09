@@ -6,7 +6,7 @@ import time
 from typing import Optional
 
 import torch, torch.nn as nn
-from datasets import load_dataset, DownloadConfig, interleave_datasets
+from datasets import load_dataset, DownloadConfig, interleave_datasets, Features, Value
 from torch.amp import autocast
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader
@@ -97,7 +97,6 @@ def train(resume: Optional[str],
                       download_config=dl_cfg,
                       streaming=True,
                       )
-
     def clean_example(ex):
         txt = ex["text"] if isinstance(ex, dict) else ex
         if len(txt) < 200:
@@ -114,7 +113,8 @@ def train(resume: Optional[str],
                       truncation=True,
                       max_length=512)
         return t.input_ids, t.attention_mask
-    stream = ds.filter(clean_example)
+    stream = ds.filter(clean_example, features=Features({"text": Value("string")}, batched=False))
+
     wiki = load_dataset("wikitext",
                         "wikitext-103-v1",
                         trust_remote_code=True,
