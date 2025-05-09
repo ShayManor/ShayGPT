@@ -106,7 +106,7 @@ def train(resume: Optional[str],
                       max_length=512)
         return t.input_ids, t.attention_mask
 
-    dl_cfg = DownloadConfig(max_retries=100)
+    dl_cfg = DownloadConfig(max_retries=100, resume_download=True)
     ds = load_dataset("oscar",
                       "unshuffled_deduplicated_en",
                       split="train",
@@ -155,7 +155,7 @@ def train(resume: Optional[str],
                     flat_logits = logits.reshape(-1, logits.size(-1))
                     flat_target = target.reshape(-1)
                     loss = nn.functional.cross_entropy(
-                        flat_logits,
+                        flat_logits.float(),
                         flat_target,
                         ignore_index=PAD_ID,
                         label_smoothing=0.1,
@@ -164,9 +164,9 @@ def train(resume: Optional[str],
                 if (step + 1) % accum_steps == 0:
                     scaler.unscale_(opt)
                     torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                    scheduler.step()
                     scaler.step(opt)
                     scaler.update()
-                    scheduler.step()
                     opt.zero_grad(set_to_none=True)
 
                 if global_step % 100 == 0 and local_rank == 0:
