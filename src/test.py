@@ -18,6 +18,7 @@ for _ in range(25):
     sep_id = tokenizer.token_to_id("[SEP]")
     logits[0, sep_id] = -1e9
 
+
     next_id = torch.multinomial(
         torch.softmax(logits / 0.3, dim=-1), num_samples=1).item()
     ids.append(next_id)
