@@ -89,15 +89,6 @@ def train(resume: Optional[str],
         raise RuntimeError("PAD token not found in tokenizer!")
     global_step = 0
     losses = []
-    dl_cfg = DownloadConfig(max_retries=100)
-    ds = load_dataset("oscar",
-                      "unshuffled_deduplicated_en",
-                      split="train",
-                      trust_remote_code=True,
-                      download_config=dl_cfg,
-                      streaming=True,
-                      )
-    ds.features = Features({"id": Value("int64"), "text": Value("string")})
     def clean_example(ex):
         txt = ex["text"] if isinstance(ex, dict) else ex
         if len(txt) < 200:
@@ -115,20 +106,27 @@ def train(resume: Optional[str],
                       max_length=512)
         return t.input_ids, t.attention_mask
 
+    dl_cfg = DownloadConfig(max_retries=100)
+    ds = load_dataset("oscar",
+                      "unshuffled_deduplicated_en",
+                      split="train",
+                      trust_remote_code=True,
+                      download_config=dl_cfg,
+                      streaming=True,
+                      )
+
     stream = ds.filter(clean_example, batched=False)
     wiki = load_dataset("wikitext",
                         "wikitext-103-v1",
                         trust_remote_code=True,
                         download_config=dl_cfg,
-                        streaming=False,
-                        cache_dir="/mnt/data/wiki"
+                        streaming=True,
                         )["train"]
     books = load_dataset("bookcorpus",
                          split="train",
                          trust_remote_code=True,
                          download_config=dl_cfg,
-                         streaming=False,
-                         cache_dir="/mnt/data/books"
+                         streaming=True,
                          )
     stream = interleave_datasets([stream, wiki, books], probabilities=[0.7, 0.15, 0.15])
     stream = stream.shuffle(buffer_size=50_000, seed=2269)
