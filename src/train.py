@@ -97,6 +97,7 @@ def train(resume: Optional[str],
                       download_config=dl_cfg,
                       streaming=True,
                       )
+    ds.features = Features({"id": Value("int64"), "text": Value("string")})
     def clean_example(ex):
         txt = ex["text"] if isinstance(ex, dict) else ex
         if len(txt) < 200:
