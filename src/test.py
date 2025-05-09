@@ -1,21 +1,27 @@
 import torch
-from torch import nn
+from tokenizer import tokenizer, BOS_ID
+from GPT import GPTConfig, GPT
 
-from src.tokenizer import tokenizer
+cfg = GPTConfig(vocab_size=50_000)
+model = GPT(cfg)
+# total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+# print(f"Total parameters: {total_params:,} ~= {total_params / 1e6:.2f} M parameters")
+model.load_state_dict(torch.load("data/checkpoint24.pth", map_location=torch.device('cpu')))
+model.eval()
+
+prompt = "Once upon a time, a curious cat ventured into a dark forest where"
+ids = tokenizer.encode(prompt).ids
+ids.insert(0, BOS_ID)
+for _ in range(25):
+    inp = torch.tensor([ids], dtype=torch.long)
+    logits = model(inp)[:, -1, :]
+    sep_id = tokenizer.token_to_id("[SEP]")
+    logits[0, sep_id] = -1e9
 
 
-@torch.no_grad()
-def sample(model, prompt, max_new_tokens=50, temperature=1.0):
-    model.eval()
-    ids = tokenizer.encode(prompt).ids
-    for _ in range(max_new_tokens):
-        idx = torch.tensor([ids], device=next(model.parameters()).device)
-        logits = model(idx)[:, -1, :] / temperature
-        next_id = torch.multinomial(nn.functional.softmax(logits, dim=-1), num_samples=1).item()
-        ids.append(next_id)
-        if next_id == tokenizer.token_to_id("[EOS]"):
-            break
-    return tokenizer.decode(ids)
-
-if __name__ == '__main__':
-    sample()
+    next_id = torch.multinomial(
+        torch.softmax(logits / 0.3, dim=-1), num_samples=1).item()
+    ids.append(next_id)
+    # if next_id == tokenizer.token_to_id("[EOS]"):
+    #     break
+print(tokenizer.decode(ids))

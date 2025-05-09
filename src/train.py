@@ -1,65 +1,170 @@
 import os
+import re
+import sys
+import time
+from typing import Optional
+
 import torch, torch.nn as nn
-from torch.amp import autocast, GradScaler
+from datasets import load_dataset, DownloadConfig
+from torch.amp import autocast
+from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader
-from TextDataset import TextDataset
-from TransformerEncoderModel import TransformerEncoderModel
+import torch.distributed as dist
+from TextDataset import TextDataset, StreamDataset
 from GPT import GPTConfig, GPT
-from tokenizer import tokenizer
+from tokenizer import tokenizer, collate_batch, BOS_ID, EOS_ID, PAD_ID
+import bitsandbytes as bnb
+from transformers import get_cosine_schedule_with_warmup
+import argparse
 
 
-def train(csv_path: str,
+def get_args():
+    p = argparse.ArgumentParser()
+    p.add_argument('--resume',
+                   type=str,
+                   default=None,
+                   help='Path to a .pth checkpoint to load')
+    p.add_argument('--epochs',
+                   type=int,
+                   default=20)
+    p.add_argument('--batch_size',
+                   type=int,
+                   default=16)
+    p.add_argument('--lr',
+                   type=float,
+                   default=1.5e-4)
+    return p.parse_args()
+
+
+def save(model, step):
+    torch.save(
+        model.module.state_dict(),
+        f"checkpoint_step{step}.pth"
+    )
+    print(f"⚡ Saved checkpoint at step {step}")
+
+
+def train(resume: Optional[str],
           epochs: int = 3,
-          init_batch: int = 64,
-          lr: float = 1e-4):
+          batch_size: int = 2,
+          lr: float = 1.5e-4,
+          ):
+
+    dist.init_process_group("nccl")
     torch.backends.cuda.matmul.allow_tf32 = True
+    torch.set_num_threads(4)
+
     torch.backends.cudnn.benchmark = True
     torch.set_float32_matmul_precision("medium")
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    local_rank = int(os.environ["LOCAL_RANK"])
+    torch.cuda.set_device(local_rank)
+    device = torch.device("cuda", local_rank)
     print("Using device:", device)
-
-    dataset = TextDataset(csv_path, max_len=512)
-    loader = DataLoader(dataset,
-                        batch_size=init_batch,
-                        shuffle=True,
-                        num_workers=0,
-                        pin_memory=True,
-                        )
+    rank = dist.get_rank()
+    world_size = dist.get_world_size()
+    steps_per_epoch = 10_000
+    bos_id, eos_id, pad_id = (tokenizer.token_to_id(t) for t in ["[BOS]", "[EOS]", "[PAD]"])
     cfg = GPTConfig(vocab_size=tokenizer.get_vocab_size())
-    model = GPT(cfg).to(device)
-    opt = torch.optim.AdamW(model.parameters(), lr=lr, betas=(0.9, 0.95), weight_decay=0.02)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=len(loader)*epochs, eta_min=lr/50)
-    scaler = GradScaler(init_scale=2**8, growth_interval=50)
-
+    model = GPT(cfg)
+    if resume and os.path.isfile(resume):
+        state = torch.load(resume, map_location="cpu")
+        model.load_state_dict(state, strict=False)
+        print(f"⚡ Loaded weights from {resume}")
+        del state
+    model.to(device)
+    scaler = torch.amp.GradScaler('cuda')
+    model = DistributedDataParallel(model, device_ids=[local_rank])
+    opt = bnb.optim.AdamW8bit(model.parameters(),
+                               lr=lr,
+                               betas=(0.9, 0.98),
+                               weight_decay=0.02,
+                               eps=1e-7)
+    accum_steps = 16
+    total_steps = steps_per_epoch * epochs
+    warmup_steps = int(0.02 * total_steps)
+    scheduler = get_cosine_schedule_with_warmup(opt, warmup_steps, total_steps)
+    pad_id = tokenizer.token_to_id("[PAD]")
+    if pad_id is None:
+        raise RuntimeError("PAD token not found in tokenizer!")
     global_step = 0
-    for epoch in range(epochs):
-        for step, (_, idx) in enumerate(loader):
-            idx = idx.to(device, non_blocking=True)
-            input = idx[:, :-1]
-            target = idx[:, 1:]
-            with autocast(device_type="cuda", dtype=torch.float16, enabled=False):
-                logits = model(input)
-                loss = nn.functional.cross_entropy(
-                    logits.reshape(-1, logits.size(-1)),
-                    target.reshape(-1),
-                    label_smoothing=0.0)
-            scaler.scale(loss).backward()
-            scaler.step(opt)
-            scaler.update()
-            opt.zero_grad(set_to_none=True)
-            scheduler.step()
+    losses = []
+    stream = load_dataset(
+        "togethercomputer/RedPajama-Data-1T",
+        "default",
+        split="train",
+        trust_remote_code=True,
+        streaming=True
+    )
 
-            if global_step % 100 == 0:
-                print(f"epoch {epoch} step {global_step} loss {loss.item():.4f} lr = {lr}")
-            global_step += 1
+    dataset = StreamDataset(stream, world_size, rank)
+    loader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        num_workers=1,
+        pin_memory=True,
+        persistent_workers=True,
+        prefetch_factor=4,
+        collate_fn=lambda ex: collate_batch(ex, BOS_ID, EOS_ID, PAD_ID),
+    )
+    try:
+        for epoch in range(epochs):
+            start_time = time.time()
+            for step, ids in enumerate(loader):
+                cur_time = time.time()
+                ids = ids.to(device, non_blocking=True)
+                # att = att.to(device, non_blocking=True)
+                input = ids[:, :-1]
+                target = ids[:, 1:]
+                with autocast(device_type="cuda", dtype=torch.bfloat16):
+                    logits = model(input)
+                    flat_logits = logits.reshape(-1, logits.size(-1))
+                    flat_target = target.reshape(-1)
+                    loss = nn.functional.cross_entropy(
+                        flat_logits,
+                        flat_target,
+                        ignore_index=pad_id,
+                        label_smoothing=0.0,
+                    )
+                scaler.scale(loss).backward()
+                if (step + 1) % accum_steps == 0:
+                    scaler.unscale_(opt)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                    scaler.step(opt)
+                    scaler.update()
+                    scheduler.step()
+                    opt.zero_grad(set_to_none=True)
 
-        torch.save(model.state_dict(),f"transformer_encoder_e{epoch}.pth")
-
-    torch.save(model.embedding.weight.cpu(), "embed_matrix.pth")
-    print("⚡ Training done.  Final loss:", loss.item())
-
+                if global_step % 100 == 0 and local_rank == 0:
+                    losses.insert(0, loss.item())
+                    avg_loss = sum(losses) / len(losses)
+                    print(
+                        f"epoch {epoch} step {global_step} loss {sum(losses) / len(losses):.4f} lr = {scheduler.get_last_lr()[0]:.5} time = {time.time() - cur_time}")
+                    if len(losses) > 5:
+                        losses.pop(-1)
+                    if avg_loss < 1.2:
+                        save(model, global_step)
+                        return
+                global_step += 1
+                if step + 1 >= steps_per_epoch:
+                    print(f'Epoch time: {time.time() - start_time}')
+                    break
+            if local_rank == 0:
+                save(model, global_step)
+    except KeyboardInterrupt:
+        save(model, global_step)
+    torch.save(model.module.tok_emb.weight.cpu(), "embed_matrix.pth")
+    if "loss" in locals():
+        print("⚡ Training done.  Final loss:", loss.item())
+    else:
+        print("No batches loaded")
 
 
 if __name__ == "__main__":
-    train("data/AI_Human.csv", epochs=10)
+    args = get_args()
+    train(
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        lr=args.lr,
+        resume=args.resume
+    )

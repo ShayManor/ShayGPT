@@ -1,3 +1,5 @@
+from typing import Optional
+
 import torch
 from torch import nn
 
@@ -5,10 +7,11 @@ from torch import nn
 class GPTConfig:
     def __init__(self,
                  vocab_size,
-                 n_layer=6,
-                 n_head=8,
-                 d_model=512,
-                 dropout=0.1,
+                 pad_id: Optional[int],
+                 n_layer=20,
+                 n_head=20,
+                 d_model=1280,
+                 dropout=0.06,
                  max_len=1024):
         self.__dict__.update(locals())
 
@@ -53,20 +56,22 @@ class GPT(nn.Module):
             if getattr(m, "bias", None) is not None:
                 nn.init.zeros_(m.bias)
 
-    # ---------- forward ----------
-    def forward(self, idx):        # idx: [B,T]
+    def forward(self, idx, pad_mask=None):  # idx: [B,T]
         B, T = idx.shape
         assert T <= self.cfg.max_len
-        x = self.tok_emb(idx) + self.pos_emb[:, :T]      # [B,T,d]
+        attn_mask = self.causal_mask[:T, :T].to(idx.device)
+        if pad_mask == None:
+            pad_mask = (idx == self.cfg.pad_id)
+        x = self.tok_emb(idx) + self.pos_emb[:, :T]  # [B,T,d]
 
-        attn_mask = self.causal_mask[:T, :T]             # [T,T], on same device later
         for blk in self.blocks:
             x = x + blk["attn"](
-                    blk["ln1"](x),
-                    blk["ln1"](x),
-                    blk["ln1"](x),
-                    attn_mask=attn_mask
-                )[0]
+                blk["ln1"](x),
+                blk["ln1"](x),
+                blk["ln1"](x),
+                attn_mask=attn_mask,
+                key_padding_mask=pad_mask,
+            )[0]
             x = x + blk["mlp"](blk["ln2"](x))
         x = self.ln_f(x)
-        return self.lm_head(x)                           # [B,T,V]
+        return self.lm_head(x)  # [B,T,V]
