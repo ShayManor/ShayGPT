@@ -113,7 +113,8 @@ def train(resume: Optional[str],
                       truncation=True,
                       max_length=512)
         return t.input_ids, t.attention_mask
-    stream = ds.filter(clean_example, features=Features({"text": Value("string")}, batched=False))
+    stream = ds.cast(Features({"text": Value("string")}))
+    stream = stream.filter(clean_example, batched=False)
 
     wiki = load_dataset("wikitext",
                         "wikitext-103-v1",
