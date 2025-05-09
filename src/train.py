@@ -138,7 +138,7 @@ def train(resume: Optional[str],
                 cur_time = time.time()
                 ids = ids.to(device, non_blocking=True)
                 attn_mask = attn_mask.to(device, non_blocking=True)
-                pad_mask = attn_mask == 0
+                pad_mask = (attn_mask == 0)[:, :-1]
                 input = ids[:, :-1]
                 target = ids[:, 1:]
                 with autocast(device_type="cuda", dtype=torch.bfloat16):
