@@ -93,11 +93,12 @@ def train(resume: Optional[str],
         raise RuntimeError("PAD token not found in tokenizer!")
     global_step = 0
     losses = []
+    dl_cfg = DownloadConfig(max_retries=100)
     hf_stream = load_dataset("oscar",
                              "unshuffled_deduplicated_en",
                              trust_remote_code=True,
-                             streaming=False,
-                             cache_dir="/mnt/data/hf_cache"
+                             streaming=True,
+                             download_config=dl_cfg,
                              )
     stream = hf_stream if not hasattr(hf_stream, "keys") else hf_stream["train"]
 
@@ -118,8 +119,8 @@ def train(resume: Optional[str],
                       max_length=512)
         return t.input_ids, t.attention_mask
 
-    wiki = load_dataset("wikitext", "wikitext-103-v1", trust_remote_code=True, streaming=False)["train"]
-    books = load_dataset("bookcorpus", split="train", trust_remote_code=True, streaming=False)
+    wiki = load_dataset("wikitext", "wikitext-103-v1", trust_remote_code=True, download_config=dl_cfg, streaming=True)["train"]
+    books = load_dataset("bookcorpus", split="train", trust_remote_code=True, download_config=dl_cfg, streaming=True)
     stream = stream.filter(clean_example, batched=False)
     stream = interleave_datasets([stream, wiki, books], probabilities=[0.7, 0.15, 0.15])
     stream = stream.shuffle(buffer_size=500_000, seed=2269)
