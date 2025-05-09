@@ -108,6 +108,7 @@ def train(resume: Optional[str],
 
     dl_cfg = DownloadConfig(max_retries=100, resume_download=True)
     token = os.getenv("HF_TOKEN")
+    print(token)
     ds = load_dataset("oscar",
                       "unshuffled_deduplicated_en",
                       split="train",
