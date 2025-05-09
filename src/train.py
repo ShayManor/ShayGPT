@@ -116,8 +116,8 @@ def train(resume: Optional[str],
                       max_length=512)
         return t.input_ids, t.attention_mask
 
-    wiki = load_dataset("wikitext", "wikitext-103-v1", streaming=True)["train"]
-    books = load_dataset("bookcorpus", split="train", streaming=True)
+    wiki = load_dataset("wikitext", "wikitext-103-v1", trust_remote_code=True, streaming=True)["train"]
+    books = load_dataset("bookcorpus", split="train", trust_remote_code=True, streaming=True)
     stream = stream.filter(clean_example, batched=False)
     stream = interleave_datasets([stream, wiki, books], probabilities=[0.7, 0.15, 0.15])
     stream = stream.shuffle(buffer_size=500_000, seed=2269)
