@@ -94,12 +94,13 @@ def train(resume: Optional[str],
     global_step = 0
     losses = []
     dl_cfg = DownloadConfig(max_retries=100)
-    hf_stream = load_dataset("oscar",
+    ds = load_dataset("oscar",
                              "unshuffled_deduplicated_en",
                              trust_remote_code=True,
                              streaming=False,
                              cache_dir="/mnt/data/oscar_cache"
-                             )
+                             )["texts"]
+    hf_stream = iter(ds)
     stream = hf_stream if not hasattr(hf_stream, "keys") else hf_stream["train"]
 
     def clean_example(ex):
