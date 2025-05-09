@@ -56,11 +56,12 @@ class GPT(nn.Module):
             if getattr(m, "bias", None) is not None:
                 nn.init.zeros_(m.bias)
 
-    def forward(self, idx):  # idx: [B,T]
+    def forward(self, idx, pad_mask=None):  # idx: [B,T]
         B, T = idx.shape
         assert T <= self.cfg.max_len
-        pad_mask = (idx == self.cfg.pad_id)  # [B,T]  True on PADs
         attn_mask = self.causal_mask[:T, :T].to(idx.device)
+        if pad_mask == None:
+            pad_mask = (idx == self.cfg.pad_id)
         x = self.tok_emb(idx) + self.pos_emb[:, :T]  # [B,T,d]
 
         for blk in self.blocks:

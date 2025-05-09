@@ -14,7 +14,7 @@ import torch.distributed as dist
 from TextDataset import TextDataset, StreamDataset
 from GPT import GPTConfig, GPT
 import bitsandbytes as bnb
-from transformers import get_cosine_schedule_with_warmup, AutoTokenizer
+from transformers import get_cosine_schedule_with_warmup, AutoTokenizer, get_linear_schedule_with_warmup
 import argparse
 
 
@@ -88,7 +88,7 @@ def train(resume: Optional[str],
     accum_steps = 16
     total_steps = steps_per_epoch * epochs
     warmup_steps = int(0.1 * total_steps)
-    scheduler = get_cosine_schedule_with_warmup(opt, warmup_steps, total_steps)
+    scheduler = get_linear_schedule_with_warmup(opt, warmup_steps, total_steps)
     if pad_id is None:
         raise RuntimeError("PAD token not found in tokenizer!")
     global_step = 0
@@ -114,7 +114,7 @@ def train(resume: Optional[str],
                       padding=True,
                       truncation=True,
                       max_length=512)
-        return t.input_ids
+        return t.input_ids, t.attention_mask
 
     wiki = load_dataset("wikitext", "wikitext-103-v1", streaming=True)["train"]
     books = load_dataset("bookcorpus", split="train", streaming=True)
@@ -129,18 +129,20 @@ def train(resume: Optional[str],
         pin_memory=True,
         persistent_workers=True,
         prefetch_factor=4,
-        collate_fn=lambda ex: collate_batch(ex["text"]),
+        collate_fn=lambda batch: collate_batch(batch),
     )
     try:
         for epoch in range(epochs):
             start_time = time.time()
-            for step, ids in enumerate(loader):
+            for step, (ids, attn_mask) in enumerate(loader):
                 cur_time = time.time()
                 ids = ids.to(device, non_blocking=True)
+                attn_mask = attn_mask.to(device, non_blocking=True)
+                pad_mask = attn_mask == 0
                 input = ids[:, :-1]
                 target = ids[:, 1:]
                 with autocast(device_type="cuda", dtype=torch.bfloat16):
-                    logits = model(input)
+                    logits = model(input, pad_mask)
                     flat_logits = logits.reshape(-1, logits.size(-1))
                     flat_target = target.reshape(-1)
                     loss = nn.functional.cross_entropy(
@@ -170,6 +172,7 @@ def train(resume: Optional[str],
                         return
                 global_step += 1
                 if step + 1 >= steps_per_epoch:
+                    print(f"Tokens/step = {batch_size * 512 * accum_steps}")
                     print(f'Epoch time: {time.time() - start_time}')
                     break
             if local_rank == 0:
