@@ -17,7 +17,7 @@ import bitsandbytes as bnb
 from transformers import get_cosine_schedule_with_warmup, AutoTokenizer
 import argparse
 
-from src.tokenizer import collate_batch, BOS_ID, EOS_ID, PAD_ID
+from tokenizer import collate_batch, BOS_ID, EOS_ID, PAD_ID
 
 
 def get_args():
