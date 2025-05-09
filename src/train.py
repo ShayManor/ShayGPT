@@ -64,8 +64,14 @@ def train(resume: Optional[str],
     rank = dist.get_rank()
     world_size = dist.get_world_size()
     tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-neo-125M")
+    bos_id = tokenizer.bos_token_id
+    eos_id = tokenizer.eos_token_id
+    pad_id = tokenizer.pad_token_id
+    if pad_id is None:
+        tokenizer.add_special_tokens({"pad_token": tokenizer.eos_token})
+        pad_id = tokenizer.pad_token_id
     steps_per_epoch = 10_000
-    bos_id, eos_id, pad_id = (tokenizer.token_to_id(t) for t in ["[BOS]", "[EOS]", "[PAD]"])
+    # bos_id, eos_id, pad_id = (tokenizer.token_to_id(t) for t in ["[BOS]", "[EOS]", "[PAD]"])
     cfg = GPTConfig(vocab_size=tokenizer.get_vocab_size(), pad_id=tokenizer.token_to_id('[PAD]'))
     model = GPT(cfg)
     if resume and os.path.isfile(resume):
