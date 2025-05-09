@@ -97,8 +97,8 @@ def train(resume: Optional[str],
     hf_stream = load_dataset("oscar",
                              "unshuffled_deduplicated_en",
                              trust_remote_code=True,
-                             streaming=True,
-                             download_config=dl_cfg,
+                             streaming=False,
+                             cache_dir="/mnt/data/oscar_cache"
                              )
     stream = hf_stream if not hasattr(hf_stream, "keys") else hf_stream["train"]
 
