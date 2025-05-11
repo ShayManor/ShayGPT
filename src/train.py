@@ -1,4 +1,5 @@
 import itertools
+import math
 import os
 import re
 import sys
@@ -83,12 +84,18 @@ def train(resume: Optional[str],
                               eps=1e-7)
     accum_steps = 16
     total_steps = steps_per_epoch * epochs
-    warmup_steps = int(0.1 * total_steps)
-    scheduler = get_linear_schedule_with_warmup(opt, warmup_steps, total_steps)
+    optimizer_steps_per_epoch = math.ceil(steps_per_epoch / accum_steps)
+    total_opt_steps = optimizer_steps_per_epoch * epochs
+    warmup_steps = int(0.1 * total_opt_steps)
+    scheduler = get_linear_schedule_with_warmup(opt,
+                                                num_warmup_steps=warmup_steps,
+                                                num_training_steps=total_opt_steps,
+                                                )
     if PAD_ID is None:
         raise RuntimeError("PAD token not found in tokenizer!")
     global_step = 0
     losses = []
+
     def clean_example(ex):
         txt = ex["text"] if isinstance(ex, dict) else ex
         if len(txt) < 200:
