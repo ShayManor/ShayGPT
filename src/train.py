@@ -116,6 +116,7 @@ def train(resume: Optional[str],
                       streaming=True,
                       token=token
                       )
+    ds._ex_iterable.features = Features({"id": Value("int64"), "text": Value("string")})
     print(ds.data)
     # stream = ds.filter(clean_example, batched=False)
     # wiki = load_dataset("wikitext",
