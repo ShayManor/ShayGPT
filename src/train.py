@@ -119,9 +119,10 @@ def train(resume: Optional[str],
                     logits = model(input)
                     flat_logits = logits.reshape(-1, logits.size(-1))
                     flat_target = target.reshape(-1)
+                    non_pad = flat_target != PAD_ID
                     loss = nn.functional.cross_entropy(
-                        flat_logits,
-                        flat_target,
+                        flat_logits[non_pad],
+                        flat_target[non_pad],
                         ignore_index=pad_id,
                         label_smoothing=0.0,
                     )
