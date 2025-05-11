@@ -130,7 +130,6 @@ def train(resume: Optional[str],
                          split="train",
                          trust_remote_code=True,
                          download_config=dl_cfg,
-                         token=token,
                          streaming=True,
                          ).filter(clean_example, batched=False)
     hf_stream = interleave_datasets([stream, wiki, books], probabilities=[0.7, 0.15, 0.15])
