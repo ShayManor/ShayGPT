@@ -124,12 +124,14 @@ def train(resume: Optional[str],
                         "wikitext-103-v1",
                         trust_remote_code=True,
                         download_config=dl_cfg,
+                        token=token,
                         streaming=True,
                         )["train"].filter(clean_example, batched=False)
     books = load_dataset("bookcorpus",
                          split="train",
                          trust_remote_code=True,
                          download_config=dl_cfg,
+                         token=token,
                          streaming=True,
                          ).filter(clean_example, batched=False)
     hf_stream = interleave_datasets([stream, wiki, books], probabilities=[0.7, 0.15, 0.15])
