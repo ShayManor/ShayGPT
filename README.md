@@ -151,6 +151,6 @@ run with
 ```commandline
 torchrun --nproc_per_node=4 train.py --config gpt_d768_l12.yml
 ```
-
+torchrun --nproc_per_node=1 train.py --epochs=50
 For questions or contributions, open an issue or submit a pull request. Stay innovative!
 © 2025 Shay Manor

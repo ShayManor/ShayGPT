@@ -90,9 +90,8 @@ def train(resume: Optional[str],
     global_step = 0
     losses = []
     stream = load_dataset(
-        "togethercomputer/RedPajama-Data-1T",
-        "default",
-        split="train",
+        "oscar",
+        "unshuffled_deduplicated_en",
         trust_remote_code=True,
         streaming=True
     )
