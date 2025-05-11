@@ -124,7 +124,6 @@ def train(resume: Optional[str],
                         "wikitext-103-v1",
                         trust_remote_code=True,
                         download_config=dl_cfg,
-                        token=token,
                         streaming=True,
                         )["train"].filter(clean_example, batched=False)
     books = load_dataset("bookcorpus",
