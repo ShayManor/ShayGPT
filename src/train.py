@@ -125,13 +125,13 @@ def train(resume: Optional[str],
                         trust_remote_code=True,
                         download_config=dl_cfg,
                         streaming=True,
-                        )["train"]
+                        )["train"].filter(clean_example, batched=False)
     books = load_dataset("bookcorpus",
                          split="train",
                          trust_remote_code=True,
                          download_config=dl_cfg,
                          streaming=True,
-                         )
+                         ).filter(clean_example, batched=False)
     hf_stream = interleave_datasets([stream, wiki, books], probabilities=[0.7, 0.15, 0.15])
     hf_stream = hf_stream.shuffle(buffer_size=50_000, seed=2269)
     dataset = StreamDataset(hf_stream, world_size, rank)
@@ -159,7 +159,7 @@ def train(resume: Optional[str],
                     flat_logits = logits.reshape(-1, logits.size(-1))
                     flat_target = target.reshape(-1)
                     loss = nn.functional.cross_entropy(
-                        flat_logits.float(),
+                        flat_logits.float().clamp_(-40, 40),
                         flat_target,
                         ignore_index=PAD_ID,
                         label_smoothing=0.1,
@@ -168,9 +168,11 @@ def train(resume: Optional[str],
                 if (step + 1) % accum_steps == 0:
                     scaler.unscale_(opt)
                     torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                    scale_before = scaler.get_scale()
                     scaler.step(opt)
                     scaler.update()
-                    scheduler.step()
+                    if scaler.get_scale() == scale_before:
+                        scheduler.step()
                     opt.zero_grad(set_to_none=True)
 
                 if global_step % 100 == 0 and local_rank == 0:
