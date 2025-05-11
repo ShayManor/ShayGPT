@@ -119,7 +119,6 @@ def train(resume: Optional[str],
     ds = ds.cast(  # cast works on IterableDataset ≥ 2.14
         Features({"id": Value("int64"), "text": Value("string")})
     )
-    print(ds.data)
     stream = ds.filter(clean_example, batched=False)
     # wiki = load_dataset("wikitext",
     #                     "wikitext-103-v1",
