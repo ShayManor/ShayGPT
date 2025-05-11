@@ -132,8 +132,8 @@ def train(resume: Optional[str],
     #                      download_config=dl_cfg,
     #                      streaming=True,
     #                      ).filter(clean_example, batched=False)
-    hf_stream = interleave_datasets([stream, books], probabilities=[0.7, 0.3])
-    hf_stream = hf_stream.shuffle(buffer_size=50_000, seed=2269)
+    # hf_stream = interleave_datasets([stream, books], probabilities=[0.7, 0.3])
+    hf_stream = stream.shuffle(buffer_size=50_000, seed=2269)
     dataset = StreamDataset(hf_stream, world_size, rank)
     loader = DataLoader(
         dataset,
