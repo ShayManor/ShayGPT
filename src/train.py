@@ -108,15 +108,15 @@ def train(resume: Optional[str],
 
     dl_cfg = DownloadConfig(max_retries=100, resume_download=True)
     token = os.getenv("HF_TOKEN")
-    print(token)
     ds = load_dataset("oscar",
                       "unshuffled_deduplicated_en",
                       trust_remote_code=True,
                       download_config=dl_cfg,
+                      split="train",
                       streaming=True,
                       token=token
                       )
-
+    print(ds.data)
     # stream = ds.filter(clean_example, batched=False)
     # wiki = load_dataset("wikitext",
     #                     "wikitext-103-v1",
