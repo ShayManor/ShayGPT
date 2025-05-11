@@ -53,6 +53,7 @@ def train(resume: Optional[str],
     dist.init_process_group("nccl")
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.set_num_threads(4)
+
     torch.backends.cudnn.benchmark = True
     torch.set_float32_matmul_precision("medium")
 
