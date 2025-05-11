@@ -120,21 +120,21 @@ def train(resume: Optional[str],
         Features({"id": Value("int64"), "text": Value("string")})
     )
     stream = ds.filter(clean_example, batched=False)
-    # wiki = load_dataset("wikitext",
-    #                     "wikitext-103-v1",
-    #                     trust_remote_code=True,
-    #                     download_config=dl_cfg,
-    #                     streaming=True,
-    #                     )["train"]
-    # books = load_dataset("bookcorpus",
-    #                      split="train",
-    #                      trust_remote_code=True,
-    #                      download_config=dl_cfg,
-    #                      streaming=True,
-    #                      )
-    # stream = interleave_datasets([stream, wiki, books], probabilities=[0.7, 0.15, 0.15])
-    # stream = stream.shuffle(buffer_size=50_000, seed=2269)
-    dataset = StreamDataset(ds, world_size, rank)
+    wiki = load_dataset("wikitext",
+                        "wikitext-103-v1",
+                        trust_remote_code=True,
+                        download_config=dl_cfg,
+                        streaming=True,
+                        )["train"]
+    books = load_dataset("bookcorpus",
+                         split="train",
+                         trust_remote_code=True,
+                         download_config=dl_cfg,
+                         streaming=True,
+                         )
+    hf_stream = interleave_datasets([stream, wiki, books], probabilities=[0.7, 0.15, 0.15])
+    hf_stream = hf_stream.shuffle(buffer_size=50_000, seed=2269)
+    dataset = StreamDataset(hf_stream, world_size, rank)
     loader = DataLoader(
         dataset,
         batch_size=batch_size,
