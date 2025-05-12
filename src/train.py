@@ -116,8 +116,8 @@ def train(resume: Optional[str],
     dl_cfg = DownloadConfig(max_retries=100, resume_download=True)
     token = os.getenv("HF_TOKEN")
     ds = load_dataset(
-        ["google/wiki40b", "Skylion007/openwebtext"],
-        ["en", None],
+        "google/wiki40b",
+        'en',
         split="train",
         streaming=True,
         download_config=dl_cfg,
