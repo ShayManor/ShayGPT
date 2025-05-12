@@ -10,7 +10,7 @@ model.load_state_dict(torch.load("checkpoint_step190000.pth", map_location=torch
 model.eval()
 
 prompt = "10 words you would use to describe itai are"
-ids = tokenizer.encode(prompt).ids
+ids = tokenizer.encode(prompt)
 ids.insert(0, BOS_ID)
 for _ in range(25):
     inp = torch.tensor([ids], dtype=torch.long)
