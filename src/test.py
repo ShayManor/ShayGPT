@@ -6,7 +6,7 @@ cfg = GPTConfig(vocab_size=50_000, pad_id=tokenizer.convert_tokens_to_ids('[PAD]
 model = GPT(cfg)
 # total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 # print(f"Total parameters: {total_params:,} ~= {total_params / 1e6:.2f} M parameters")
-model.load_state_dict(torch.load("data/checkpoint4.pth", map_location=torch.device('cpu')))
+model.load_state_dict(torch.load("checkpoint_step190000.pth", map_location=torch.device('cpu')))
 model.eval()
 
 prompt = "10 words you would use to describe itai are"
