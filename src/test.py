@@ -9,7 +9,7 @@ model = GPT(cfg)
 model.load_state_dict(torch.load("checkpoint_step190000.pth", map_location=torch.device('cpu')))
 model.eval()
 
-prompt = "10 words you would use to describe itai are"
+prompt = "The black cat ventured into the forest where "
 ids = tokenizer.encode(prompt)
 ids.insert(0, BOS_ID)
 for _ in range(25):
