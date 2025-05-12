@@ -28,13 +28,13 @@ def get_args():
                    help='Path to a .pth checkpoint to load')
     p.add_argument('--epochs',
                    type=int,
-                   default=20)
+                   default=50)
     p.add_argument('--batch_size',
                    type=int,
-                   default=2)
+                   default=32)
     p.add_argument('--lr',
                    type=float,
-                   default=1.5e-4)
+                   default=2e-4)
     return p.parse_args()
 
 
@@ -86,7 +86,7 @@ def train(resume: Optional[str],
     total_steps = steps_per_epoch * epochs
     optimizer_steps_per_epoch = math.ceil(steps_per_epoch / accum_steps)
     total_opt_steps = optimizer_steps_per_epoch * epochs
-    warmup_steps = int(0.1 * total_opt_steps)
+    warmup_steps = int(0.15 * total_opt_steps)
     scheduler = get_linear_schedule_with_warmup(opt,
                                                 num_warmup_steps=warmup_steps,
                                                 num_training_steps=total_opt_steps,
