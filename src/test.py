@@ -2,7 +2,7 @@ import torch
 from tokenizer import tokenizer, BOS_ID
 from GPT import GPTConfig, GPT
 
-cfg = GPTConfig(vocab_size=50_000)
+cfg = GPTConfig(vocab_size=50_000, pad_id=tokenizer.convert_tokens_to_ids('[PAD]'))
 model = GPT(cfg)
 # total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 # print(f"Total parameters: {total_params:,} ~= {total_params / 1e6:.2f} M parameters")
