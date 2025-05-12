@@ -119,6 +119,7 @@ def train(resume: Optional[str],
         "Skylion007/openwebtext",
         split="train",
         streaming=True,
+        trust_remote_code=True,
         download_config=dl_cfg,
         use_auth_token=token
     )
