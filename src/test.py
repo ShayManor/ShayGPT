@@ -15,7 +15,7 @@ ids.insert(0, BOS_ID)
 for _ in range(25):
     inp = torch.tensor([ids], dtype=torch.long)
     logits = model(inp)[:, -1, :]
-    sep_id = tokenizer.token_to_id("[SEP]")
+    sep_id = tokenizer.tokenize("[SEP]")
     logits[0, sep_id] = -1e9
 
     next_id = torch.multinomial(
