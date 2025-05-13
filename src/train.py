@@ -34,7 +34,7 @@ def get_args():
                    default=2)
     p.add_argument('--lr',
                    type=float,
-                   default=2e-4)
+                   default=5e-5)
     return p.parse_args()
 
 
@@ -115,26 +115,33 @@ def train(resume: Optional[str],
 
     dl_cfg = DownloadConfig(max_retries=100, resume_download=True)
     token = os.getenv("HF_TOKEN")
-    bookcorp_ds = load_dataset(
+    book_ds = load_dataset(
         "SamuelYang/bookcorpus",  # Gutenberg-derived BookCorpus
         split="train",
         download_config=dl_cfg,
         use_auth_token=token
     )
+    book_ds = book_ds.select_columns(["text"])
+    book_ds = book_ds.cast(Features({"text": Value("string")}))
     minipile_ds = load_dataset(
         "JeanKaddour/minipile",
         split="train",
         download_config=dl_cfg,
         use_auth_token=token
     )
-    gpt2prep_ds = load_dataset(
+    minipile_ds = minipile_ds.select_columns(["text"])
+    minipile_ds = minipile_ds.cast(Features({"text": Value("string")}))
+    gpt_ds = load_dataset(
         "terrycraddock/GPT2-PretrainV1-en",  # Composite GPT2 pretrain dataset
         split="train",
         download_config=dl_cfg,
         use_auth_token=token
     )
+    gpt_ds = gpt_ds.select_columns(["text"])
+    gpt_ds = gpt_ds.cast(Features({"text": Value("string")}))
+
     hf_stream = interleave_datasets(
-        [bookcorp_ds, minipile_ds, gpt2prep_ds],
+        [book_ds, minipile_ds, gpt_ds],
         probabilities=[0.2, 0.3, 0.5],
         stopping_strategy="all_exhausted"
     )
