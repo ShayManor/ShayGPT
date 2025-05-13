@@ -2,13 +2,14 @@ import itertools
 import math
 import os
 import re
+import shutil
 import sys
 import time
 from typing import Optional
 
 import torch, torch.nn as nn
 
-from datasets import load_dataset, DownloadConfig, interleave_datasets, Features, Value
+from datasets import load_dataset, DownloadConfig, interleave_datasets, Features, Value, load_from_disk
 from torch.amp import autocast
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader
@@ -119,24 +120,25 @@ def train(resume: Optional[str],
 
     from datasets import load_dataset, DownloadConfig, Value, Features
 
-    def get_text_dataset(name, split, cache_dir, token=None):
+    def get_text_dataset(name: str, split: str, cache_dir: str, token: str = None):
         proc_path = os.path.join(cache_dir, f"{name.replace('/', '_')}_{split}")
         feats = Features({"text": Value("string")})
 
-        if os.path.exists(proc_path):
-            ds = load_dataset(
-                "arrow",
-                data_files={"train": f"{proc_path}/*.arrow"},
-                split="train"
-            )
-            return ds.cast_column("text", Value("string"))
+        if os.path.isdir(proc_path):
+            ds = load_from_disk(proc_path)
+            if ds.features["text"].dtype != "string":
+                print(f"⚠️  Stale cache for {name}, deleting and regenerating…")
+                shutil.rmtree(proc_path)
+            else:
+                return ds
 
-        print(f"⏳ First run: processing {name} …")
+        print(f"⏳  First run: processing {name} (saving to {proc_path})")
+        dl_cfg = DownloadConfig(max_retries=100, resume_download=True)
         ds = load_dataset(
             name,
             split=split,
             features=feats,
-            download_config=DownloadConfig(max_retries=100, resume_download=True),
+            download_config=dl_cfg,
             use_auth_token=token
         ).select_columns(["text"])
         ds = ds.flatten_indices()
