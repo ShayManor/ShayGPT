@@ -197,7 +197,7 @@ def train(resume: Optional[str],
         idx += 1
     log_file = f'data/logfile_{idx}.txt'
     open(log_file, 'x')
-
+    print(f"Wrote logfile: {log_file}")
     STREAMS = {
         "oscar": oscar,
         "owt": owt_ds,
