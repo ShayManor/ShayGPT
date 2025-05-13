@@ -120,13 +120,15 @@ def train(resume: Optional[str],
         "en",
         split="train",
         download_config=dl_cfg,
-        use_auth_token=token
+        token=token,
+        trust_remote_code=True,
     )
     owt_ds = load_dataset(
         "Skylion007/openwebtext",  # OpenWebText replication
         split="train",
         download_config=dl_cfg,
-        use_auth_token=token
+        token=token,
+        trust_remote_code=True,
     )
     uniform_feats = Features({"id": Value("int64"), "text": Value("string")})
     wiki_ds = wiki_ds.cast(uniform_feats)
