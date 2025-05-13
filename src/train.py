@@ -125,7 +125,7 @@ def train(resume: Optional[str],
     )
     wiki_ds = wiki_ds.rename_column("wikidata_id", "id")
     wiki_ds = wiki_ds.remove_columns(["version_id"])
-    wiki_ds = wiki_ds.cast(Features({"id": Value("string"), "text": Value("string")}))
+    wiki_ds = wiki_ds.cast(Features({"text": Value("string")}))
     owt_ds = load_dataset(
         "Skylion007/openwebtext",  # OpenWebText replication
         split="train",
