@@ -123,7 +123,7 @@ def train(resume: Optional[str],
         download_config=dl_cfg,
         use_auth_token=token
     )
-    ds = ds.cast(  # cast works on IterableDataset ≥ 2.14
+    ds = ds.cast(
         Features({"id": Value("int64"), "text": Value("string")})
     )
     stream = ds.filter(clean_example, batched=False)
@@ -157,7 +157,7 @@ def train(resume: Optional[str],
             for step, (ids, attn_mask) in enumerate(loader):
                 cur_time = time.time()
                 ids = ids.to(device, non_blocking=True)
-                attn_mask = attn_mask.to(device, non_blocking=True)
+                attn_mask = attn_mask.bool()
                 pad_mask = (attn_mask == 0)[:, :-1]
                 input = ids[:, :-1]
                 target = ids[:, 1:]
@@ -166,10 +166,10 @@ def train(resume: Optional[str],
                     flat_logits = logits.reshape(-1, logits.size(-1))
                     flat_target = target.reshape(-1)
                     loss = nn.functional.cross_entropy(
-                        flat_logits.float().clamp_(-40, 40),
+                        flat_logits.float().clamp_(-100, 100),
                         flat_target,
                         ignore_index=PAD_ID,
-                        label_smoothing=0.1,
+                        label_smoothing=0.01,
                     )
                 scaler.scale(loss).backward()
                 if (step + 1) % accum_steps == 0:
