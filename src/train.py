@@ -142,7 +142,7 @@ def train(resume: Optional[str],
         stopping_strategy="all_exhausted"
     )
 
-    hf_stream = hf_stream.shuffle()
+    # hf_stream = hf_stream.shuffle()
     dataset = StreamDataset(hf_stream, world_size, rank)
     loader = DataLoader(
         dataset,
