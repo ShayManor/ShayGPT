@@ -344,7 +344,7 @@ if __name__ == "__main__":
         "max_position_embeddings": 1024,
     }
 
-    model_weights_file = "checkpoint14.pth"
+    model_weights_file = "checkpoint12.pth"
 
     prompt = "The craziest, wildest story every starts with: "
     gen_params = {
