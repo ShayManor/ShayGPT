@@ -1,6 +1,7 @@
 import itertools
 import math
 import os
+import random
 import re
 import shutil
 import sys
@@ -38,6 +39,10 @@ def get_args():
     p.add_argument('--lr',
                    type=float,
                    default=5e-5)
+    p.add_argument('--start',
+                   type=int,
+                   default=0,
+                   )
     return p.parse_args()
 
 
@@ -53,6 +58,7 @@ def train(resume: Optional[str],
           epochs: int = 3,
           batch_size: int = 16,
           lr: float = 5e-5,
+          start: int = 0,
           ):
     dist.init_process_group("nccl")
     torch.backends.cuda.matmul.allow_tf32 = True
@@ -119,60 +125,108 @@ def train(resume: Optional[str],
         return t.input_ids, t.attention_mask
 
     from datasets import load_dataset, DownloadConfig, Value, Features
-
-    def get_text_dataset(name: str, split: str, cache_dir: str, token: str = None):
-        proc_path = os.path.join(cache_dir, f"{name.replace('/', '_')}_{split}")
-        # the ONE schema we actually want:
-        canonical = Features({"text": Value("string")})
-
-        # 1) reload path
-        if os.path.isdir(proc_path):
-            ds = load_from_disk(proc_path)
-            # cast_text even if it *looks* right — idempotent if already string
-            ds = ds.cast_column("text", Value("string"))
-            return ds
-
-        print(f"⏳ First run: processing {name} …")
-        dl_cfg = DownloadConfig(max_retries=100, resume_download=True)
-        ds = load_dataset(
-            name,
-            split=split,
-            download_config=dl_cfg,
-            use_auth_token=token
-        ).select_columns(["text"])
-
-        ds = ds.cast_column("text", Value("string"))
-        ds = ds.flatten_indices()
-
-        ds.save_to_disk(proc_path)
-        return ds
-
-    CACHE_ROOT = "/mnt/nvme/arrow_cache"
+    # -----------------------------------------------
+    # SET DATASETS
     dl_cfg = DownloadConfig(max_retries=100, resume_download=True)
     token = os.getenv("HF_TOKEN")
-    book_ds = get_text_dataset("SamuelYang/bookcorpus", "train", CACHE_ROOT, token)
-    mini_ds = get_text_dataset("JeanKaddour/minipile", "train", CACHE_ROOT, token)
-    gpt_ds = get_text_dataset("terrycraddock/GPT2-PretrainV1-en", "train", CACHE_ROOT, token)
-
-    hf_stream = interleave_datasets(
-        [book_ds, mini_ds, gpt_ds],
-        probabilities=[0.2, 0.3, 0.5],
-        stopping_strategy="all_exhausted"
+    book_ds = load_dataset(
+        "SamuelYang/bookcorpus",  # Gutenberg-derived BookCorpus
+        split="train",
+        download_config=dl_cfg,
+        streaming=True,
+        use_auth_token=token
+    )
+    book_ds = book_ds.select_columns(["text"])
+    book_ds = book_ds.cast(Features({"text": Value("string")}))
+    minipile_ds = load_dataset(
+        "JeanKaddour/minipile",
+        split="train",
+        download_config=dl_cfg,
+        streaming=True,
+        use_auth_token=token
+    )
+    minipile_ds = minipile_ds.select_columns(["text"])
+    minipile_ds = minipile_ds.cast(Features({"text": Value("string")}))
+    gpt_ds = load_dataset(
+        "terrycraddock/GPT2-PretrainV1-en",  # Composite GPT2 pretrain dataset
+        split="train",
+        download_config=dl_cfg,
+        streaming=True,
+        use_auth_token=token
+    )
+    wiki_ds = load_dataset(
+        "google/wiki40b",  # clean Wikipedia
+        "en",
+        split="train",
+        download_config=dl_cfg,
+        token=token,
+        streaming=True,
+        trust_remote_code=True,
+    )
+    wiki_ds = wiki_ds.rename_column("wikidata_id", "id")
+    wiki_ds = wiki_ds.remove_columns(["version_id"])
+    wiki_ds = wiki_ds.remove_columns(["id"])
+    wiki_ds = wiki_ds.cast(Features({"text": Value("string")}))
+    owt_ds = load_dataset(
+        "Skylion007/openwebtext",  # OpenWebText replication
+        split="train",
+        download_config=dl_cfg,
+        token=token,
+        trust_remote_code=True,
+    )
+    uniform_feats = Features({"text": Value("string")})
+    owt_ds = owt_ds.cast(uniform_feats)
+    gpt_ds = gpt_ds.select_columns(["text"])
+    gpt_ds = gpt_ds.cast(Features({"text": Value("string")}))
+    oscar = load_dataset("oscar",
+                         "unshuffled_deduplicated_en",
+                         trust_remote_code=True,
+                         download_config=dl_cfg,
+                         split="train",
+                         streaming=True,
+                         token=token
+                         )
+    oscar = oscar.cast(  # cast works on IterableDataset ≥ 2.14
+        Features({"id": Value("int64"), "text": Value("string")})
     )
 
-    # hf_stream = hf_stream.shuffle()
-    dataset = StreamDataset(hf_stream, world_size, rank)
-    loader = DataLoader(
-        dataset,
-        batch_size=batch_size,
-        num_workers=1,
-        pin_memory=True,
-        persistent_workers=True,
-        prefetch_factor=4,
-        collate_fn=lambda batch: collate_batch(batch),
-    )
+    idx = 1
+    while f'logfile_{idx}.txt' not in os.listdir('data'):
+        idx += 1
+    log_file = f'data/logfile_{idx}.txt'
+    open(log_file, 'x')
+
+    def set_dataset(epoch):
+        if epoch == 0:
+            stream = oscar
+        elif epoch == 20:
+            stream = owt_ds
+        elif epoch == 25:
+            stream = wiki_ds
+        elif epoch == 30:
+            stream = gpt_ds
+        elif epoch == 33:
+            stream = minipile_ds
+        elif epoch == 35:
+            stream = book_ds
+        else:
+            options = [oscar, owt_ds, wiki_ds, gpt_ds, minipile_ds, book_ds]
+            stream = options[random.randint(0, len(options) - 1)]
+        dataset = StreamDataset(stream, world_size, rank)
+        loader = DataLoader(
+            dataset,
+            batch_size=batch_size,
+            num_workers=1,
+            pin_memory=True,
+            persistent_workers=True,
+            prefetch_factor=4,
+            collate_fn=lambda batch: collate_batch(batch),
+        )
+        return loader
+
     try:
-        for epoch in range(epochs):
+        for epoch in range(start, epochs):
+            loader = set_dataset(epoch)
             start_time = time.time()
             for step, (ids, attn_mask) in enumerate(loader):
                 cur_time = time.time()
@@ -205,8 +259,10 @@ def train(resume: Optional[str],
                 if global_step % 100 == 0 and local_rank == 0:
                     losses.insert(0, loss.item())
                     avg_loss = sum(losses) / len(losses)
-                    print(
-                        f"epoch {epoch} step {global_step} loss {sum(losses) / len(losses):.4f} lr = {scheduler.get_last_lr()[0]:.5} time = {time.time() - cur_time}")
+                    log = f"epoch {epoch} step {global_step} loss {sum(losses) / len(losses):.4f} lr = {scheduler.get_last_lr()[0]:.5} time = {time.time() - cur_time}"
+                    with open(log_file, 'a') as f:
+                        f.write(log)
+                    print(log)
                     if len(losses) > 5:
                         losses.pop(-1)
                 global_step += 1
