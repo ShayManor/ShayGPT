@@ -10,7 +10,6 @@ from select import select
 from typing import Optional
 
 import torch, torch.nn as nn
-
 from datasets import load_dataset, DownloadConfig, interleave_datasets, Features, Value, load_from_disk
 from torch.amp import autocast
 from torch.nn.parallel import DistributedDataParallel
@@ -55,6 +54,45 @@ def save(model, step):
     print(f"⚡ Saved checkpoint at step {step}")
 
 
+def build_streams():
+    token = os.getenv("HF_TOKEN")
+    dl_cfg = DownloadConfig(max_retries=100, resume_download=True)
+    feats = Features({"text": Value("string")})
+
+    book = load_dataset("SamuelYang/bookcorpus", split="train",
+                        streaming=True, download_config=dl_cfg, use_auth_token=token
+                        ).select_columns(["text"]).cast(feats)
+
+    mini = load_dataset("JeanKaddour/minipile", split="train",
+                        streaming=True, download_config=dl_cfg, use_auth_token=token
+                        ).select_columns(["text"]).cast(feats)
+
+    gpt = load_dataset("terrycraddock/GPT2-PretrainV1-en", split="train",
+                       streaming=True, download_config=dl_cfg, use_auth_token=token
+                       ).select_columns(["text"]).cast(feats)
+
+    wiki = load_dataset("google/wiki40b", "en", split="train",
+                        streaming=True, download_config=dl_cfg, trust_remote_code=True, token=token
+                        ).remove_columns(["wikidata_id", "version_id", "id"]).cast(feats)
+
+    owt = load_dataset("Skylion007/openwebtext", split="train",
+                       streaming=True, download_config=dl_cfg, trust_remote_code=True, token=token
+                       ).cast(feats)
+
+    oscar = load_dataset("oscar", "unshuffled_deduplicated_en", split="train",
+                         streaming=True, download_config=dl_cfg, trust_remote_code=True, token=token
+                         ).cast(Features({"id": Value("int64"), "text": Value("string")}))
+
+    return {
+        "oscar": oscar,
+        "owt": owt,
+        "wiki": wiki,
+        "gpt": gpt,
+        "mini": mini,
+        "book": book,
+    }
+
+
 def train(resume: Optional[str],
           epochs: int = 3,
           batch_size: int = 16,
@@ -89,7 +127,6 @@ def train(resume: Optional[str],
     scaler = torch.amp.GradScaler('cuda')
     model = DistributedDataParallel(model, device_ids=[local_rank])
     opt = bnb.optim.AdamW8bit(model.parameters(),
-
                               lr=lr,
                               betas=(0.9, 0.995),
                               weight_decay=0.01,
@@ -118,94 +155,22 @@ def train(resume: Optional[str],
         return ascii_chars / len(txt) >= 0.95
 
     def collate_batch(texts):
-        t = tokenizer(texts,
-                      return_tensors="pt",
-                      padding=True,
-                      truncation=True,
-                      max_length=512)
-        return t.input_ids, t.attention_mask
-
-    from datasets import load_dataset, DownloadConfig, Value, Features
-    # -----------------------------------------------
-    # SET DATASETS
-    dl_cfg = DownloadConfig(max_retries=100, resume_download=True)
-    token = os.getenv("HF_TOKEN")
-    book_ds = load_dataset(
-        "SamuelYang/bookcorpus",  # Gutenberg-derived BookCorpus
-        split="train",
-        download_config=dl_cfg,
-        streaming=True,
-        use_auth_token=token
-    )
-    book_ds = book_ds.select_columns(["text"])
-    book_ds = book_ds.cast(Features({"text": Value("string")}))
-    minipile_ds = load_dataset(
-        "JeanKaddour/minipile",
-        split="train",
-        download_config=dl_cfg,
-        streaming=True,
-        use_auth_token=token
-    )
-    minipile_ds = minipile_ds.select_columns(["text"])
-    minipile_ds = minipile_ds.cast(Features({"text": Value("string")}))
-    gpt_ds = load_dataset(
-        "terrycraddock/GPT2-PretrainV1-en",  # Composite GPT2 pretrain dataset
-        split="train",
-        download_config=dl_cfg,
-        streaming=True,
-        use_auth_token=token
-    )
-    wiki_ds = load_dataset(
-        "google/wiki40b",  # clean Wikipedia
-        "en",
-        split="train",
-        download_config=dl_cfg,
-        token=token,
-        streaming=True,
-        trust_remote_code=True,
-    )
-    wiki_ds = wiki_ds.rename_column("wikidata_id", "id")
-    wiki_ds = wiki_ds.remove_columns(["version_id"])
-    wiki_ds = wiki_ds.remove_columns(["id"])
-    wiki_ds = wiki_ds.cast(Features({"text": Value("string")}))
-    owt_ds = load_dataset(
-        "Skylion007/openwebtext",  # OpenWebText replication
-        split="train",
-        download_config=dl_cfg,
-        streaming=True,
-        token=token,
-        trust_remote_code=True,
-    )
-    uniform_feats = Features({"text": Value("string")})
-    owt_ds = owt_ds.cast(uniform_feats)
-    gpt_ds = gpt_ds.select_columns(["text"])
-    gpt_ds = gpt_ds.cast(Features({"text": Value("string")}))
-    oscar = load_dataset("oscar",
-                         "unshuffled_deduplicated_en",
-                         trust_remote_code=True,
-                         download_config=dl_cfg,
-                         split="train",
-                         streaming=True,
-                         token=token
-                         )
-    oscar = oscar.cast(  # cast works on IterableDataset ≥ 2.14
-        Features({"id": Value("int64"), "text": Value("string")})
-    )
+        texts = [t["text"] if isinstance(t, dict) else t for t in texts]
+        enc = tokenizer(texts,
+                        return_tensors="pt",
+                        padding=True,
+                        truncation=True,
+                        max_length=512)
+        return enc.input_ids, enc.attention_mask
 
     idx = 1
     while f'logfile_{idx}.txt' not in os.listdir('data'):
         idx += 1
     log_file = f'data/logfile_{idx}.txt'
     open(log_file, 'x')
+
     print(f"Wrote logfile: {log_file}")
-    STREAMS = {
-        "oscar": oscar,
-        "owt": owt_ds,
-        "wiki": wiki_ds,
-        "gpt": gpt_ds,
-        "mini": minipile_ds,
-        "book": book_ds,
-    }
+    STREAMS = build_streams()
 
     SCHEDULE = [
         (0, "oscar"),
@@ -217,16 +182,24 @@ def train(resume: Optional[str],
     ]
 
     def select_stream(epoch):
-        name = max((e for e, _ in SCHEDULE if e <= epoch), default=0)
-        target = dict(SCHEDULE)[name]
+        corpus_name = max(e for e, _ in SCHEDULE if e <= epoch)
+        corpus = dict(SCHEDULE)[corpus_name]
+        base = STREAMS[corpus]
+
+        iterator = (
+            base
+            .shuffle(buffer_size=256, seed=epoch)
+            .shard(num_shards=world_size, index=rank)
+        )
+        per_epoch = steps_per_epoch * batch_size
+        iterator = itertools.islice(iterator, per_epoch)
+
         return DataLoader(
-            STREAMS[target].shuffle(),
+            iterator,
             batch_size=batch_size,
-            num_workers=1,
+            num_workers=0,
             pin_memory=True,
-            persistent_workers=True,
-            prefetch_factor=4,
-            collate_fn=lambda batch: collate_batch(batch),
+            collate_fn=collate_batch
         )
 
     try:

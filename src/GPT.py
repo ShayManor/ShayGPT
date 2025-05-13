@@ -12,7 +12,7 @@ class GPTConfig:
                  n_head=20,
                  d_model=1280,
                  dropout=0.06,
-                 max_len=1024):
+                 max_len=512):
         self.__dict__.update(locals())
 
 
