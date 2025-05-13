@@ -7,12 +7,14 @@ import time
 from typing import Optional
 
 import torch, torch.nn as nn
+
 from datasets import load_dataset, DownloadConfig, interleave_datasets, Features, Value
 from torch.amp import autocast
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader
 import torch.distributed as dist
 from TextDataset import TextDataset, StreamDataset
+
 from tokenizer import tokenizer, BOS_ID, EOS_ID, PAD_ID
 from GPT import GPTConfig, GPT
 import bitsandbytes as bnb
@@ -36,7 +38,6 @@ def get_args():
                    type=float,
                    default=5e-5)
     return p.parse_args()
-
 
 def save(model, step):
     torch.save(
@@ -63,6 +64,7 @@ def train(resume: Optional[str],
     print("Using device:", device)
     rank = dist.get_rank()
     world_size = dist.get_world_size()
+
     # if PAD_ID is None:
     #     tokenizer.add_special_tokens({"pad_token": tokenizer.eos_token})
     #     PAD_ID = tokenizer.pad_token_id
@@ -78,6 +80,7 @@ def train(resume: Optional[str],
     scaler = torch.amp.GradScaler('cuda')
     model = DistributedDataParallel(model, device_ids=[local_rank])
     opt = bnb.optim.AdamW8bit(model.parameters(),
+
                               lr=lr,
                               betas=(0.9, 0.995),
                               weight_decay=0.01,
