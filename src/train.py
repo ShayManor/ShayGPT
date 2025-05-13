@@ -134,7 +134,7 @@ def train(resume: Optional[str],
         token=token,
         trust_remote_code=True,
     )
-    uniform_feats = Features({"id": Value("string"), "text": Value("string")})
+    uniform_feats = Features({"text": Value("string")})
     owt_ds = owt_ds.cast(uniform_feats)
     hf_stream = interleave_datasets(
         [wiki_ds, owt_ds],
