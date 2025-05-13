@@ -117,26 +117,25 @@ def train(resume: Optional[str],
                       max_length=512)
         return t.input_ids, t.attention_mask
 
+    from datasets import load_dataset, DownloadConfig, Value, Features
+
     def get_text_dataset(name, split, cache_dir, token=None):
         proc_path = os.path.join(cache_dir, f"{name.replace('/', '_')}_{split}")
-        # this is your one true schema
         feats = Features({"text": Value("string")})
 
         if os.path.exists(proc_path):
-            # on reload, enforce string on that column
             ds = load_dataset(
                 "arrow",
                 data_files={"train": f"{proc_path}/*.arrow"},
-                split="train",
-                features=feats,
+                split="train"
             )
-            return ds
+            return ds.cast_column("text", Value("string"))
 
         print(f"⏳ First run: processing {name} …")
         ds = load_dataset(
             name,
             split=split,
-            features=feats,  # ← ensure you save as string
+            features=feats,
             download_config=DownloadConfig(max_retries=100, resume_download=True),
             use_auth_token=token
         ).select_columns(["text"])
