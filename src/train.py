@@ -123,6 +123,9 @@ def train(resume: Optional[str],
         token=token,
         trust_remote_code=True,
     )
+    wiki_ds = wiki_ds.rename_column("wikidata_id", "id")
+    wiki_ds = wiki_ds.remove_columns(["version_id"])
+    wiki_ds = wiki_ds.cast(Features({"id": Value("int64"), "text": Value("string")}))
     owt_ds = load_dataset(
         "Skylion007/openwebtext",  # OpenWebText replication
         split="train",
@@ -131,7 +134,6 @@ def train(resume: Optional[str],
         trust_remote_code=True,
     )
     uniform_feats = Features({"id": Value("int64"), "text": Value("string")})
-    wiki_ds = wiki_ds.cast(uniform_feats)
     owt_ds = owt_ds.cast(uniform_feats)
     hf_stream = interleave_datasets(
         [wiki_ds, owt_ds],
