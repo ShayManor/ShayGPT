@@ -6,6 +6,7 @@ import re
 import shutil
 import sys
 import time
+from select import select
 from typing import Optional
 
 import torch, torch.nn as nn
@@ -171,6 +172,7 @@ def train(resume: Optional[str],
         "Skylion007/openwebtext",  # OpenWebText replication
         split="train",
         download_config=dl_cfg,
+        streaming=True,
         token=token,
         trust_remote_code=True,
     )
@@ -196,25 +198,29 @@ def train(resume: Optional[str],
     log_file = f'data/logfile_{idx}.txt'
     open(log_file, 'x')
 
-    def set_dataset(epoch):
-        if epoch == 0:
-            stream = oscar
-        elif epoch == 20:
-            stream = owt_ds
-        elif epoch == 25:
-            stream = wiki_ds
-        elif epoch == 30:
-            stream = gpt_ds
-        elif epoch == 33:
-            stream = minipile_ds
-        elif epoch == 35:
-            stream = book_ds
-        else:
-            options = [oscar, owt_ds, wiki_ds, gpt_ds, minipile_ds, book_ds]
-            stream = options[random.randint(0, len(options) - 1)]
-        dataset = StreamDataset(stream, world_size, rank)
-        loader = DataLoader(
-            dataset,
+    STREAMS = {
+        "oscar": oscar,
+        "owt": owt_ds,
+        "wiki": wiki_ds,
+        "gpt": gpt_ds,
+        "mini": minipile_ds,
+        "book": book_ds,
+    }
+
+    SCHEDULE = [
+        (0, "oscar"),
+        (20, "owt"),
+        (25, "wiki"),
+        (30, "gpt"),
+        (33, "mini"),
+        (35, "book"),
+    ]
+
+    def select_stream(epoch):
+        name = max((e for e, _ in SCHEDULE if e <= epoch), default=0)
+        target = dict(SCHEDULE)[name]
+        return DataLoader(
+            STREAMS[target].shuffle(),
             batch_size=batch_size,
             num_workers=1,
             pin_memory=True,
@@ -222,11 +228,10 @@ def train(resume: Optional[str],
             prefetch_factor=4,
             collate_fn=lambda batch: collate_batch(batch),
         )
-        return loader
 
     try:
         for epoch in range(start, epochs):
-            loader = set_dataset(epoch)
+            loader = select_stream(epoch)
             start_time = time.time()
             for step, (ids, attn_mask) in enumerate(loader):
                 cur_time = time.time()
