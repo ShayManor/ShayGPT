@@ -115,30 +115,27 @@ def train(resume: Optional[str],
 
     dl_cfg = DownloadConfig(max_retries=100, resume_download=True)
     token = os.getenv("HF_TOKEN")
-    wiki_ds = load_dataset(
-        "google/wiki40b",  # clean Wikipedia
-        "en",
+    bookcorp_ds = load_dataset(
+        "SamuelYang/bookcorpus",  # Gutenberg-derived BookCorpus
         split="train",
         download_config=dl_cfg,
-        token=token,
-        trust_remote_code=True,
+        use_auth_token=token
     )
-    wiki_ds = wiki_ds.rename_column("wikidata_id", "id")
-    wiki_ds = wiki_ds.remove_columns(["version_id"])
-    wiki_ds = wiki_ds.remove_columns(["id"])
-    wiki_ds = wiki_ds.cast(Features({"text": Value("string")}))
-    owt_ds = load_dataset(
-        "Skylion007/openwebtext",  # OpenWebText replication
+    minipile_ds = load_dataset(
+        "JeanKaddour/minipile",
         split="train",
         download_config=dl_cfg,
-        token=token,
-        trust_remote_code=True,
+        use_auth_token=token
     )
-    uniform_feats = Features({"text": Value("string")})
-    owt_ds = owt_ds.cast(uniform_feats)
+    gpt2prep_ds = load_dataset(
+        "terrycraddock/GPT2-PretrainV1-en",  # Composite GPT2 pretrain dataset
+        split="train",
+        download_config=dl_cfg,
+        use_auth_token=token
+    )
     hf_stream = interleave_datasets(
-        [wiki_ds, owt_ds],
-        probabilities=[0.2, 0.8],
+        [bookcorp_ds, minipile_ds, gpt2prep_ds],
+        probabilities=[0.2, 0.3, 0.5],
         stopping_strategy="all_exhausted"
     )
 
@@ -191,9 +188,6 @@ def train(resume: Optional[str],
                         f"epoch {epoch} step {global_step} loss {sum(losses) / len(losses):.4f} lr = {scheduler.get_last_lr()[0]:.5} time = {time.time() - cur_time}")
                     if len(losses) > 5:
                         losses.pop(-1)
-                    if avg_loss < 1.2:
-                        save(model, global_step)
-                        return
                 global_step += 1
                 if step + 1 >= steps_per_epoch:
                     print(f"Tokens/step = {batch_size * 512 * accum_steps}")
