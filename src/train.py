@@ -119,18 +119,24 @@ def train(resume: Optional[str],
 
     def get_text_dataset(name, split, cache_dir, token=None):
         proc_path = os.path.join(cache_dir, f"{name.replace('/', '_')}_{split}")
-        if os.path.exists(proc_path):
-            return load_dataset("arrow", data_files={"train": f"{proc_path}/*.arrow"}, split="train")
-
-        print(f"⏳ First run: processing {name} …")
         feats = Features({"text": Value("string")})
+        if os.path.exists(proc_path):
+            ds = load_dataset(
+                "arrow",
+                data_files={"train": f"{proc_path}/*.arrow"},
+                split="train",
+            )
+            return ds.cast_column("text", Value("string"))
+        print(f"⏳ First run: processing {name} …")
         ds = load_dataset(
-            name, split=split, features=feats,
+            name,
+            split=split,
+            features=feats,
             download_config=DownloadConfig(max_retries=100, resume_download=True),
             use_auth_token=token
-        ).select_columns(["text"])  # keep only what you care about
-        ds = ds.flatten_indices()  # contiguous pointers → faster shuffles
-        ds.save_to_disk(proc_path)  # creates .arrow shards
+        ).select_columns(["text"])
+        ds = ds.flatten_indices()
+        ds.save_to_disk(proc_path)
         return ds
 
     CACHE_ROOT = "/mnt/nvme/arrow_cache"
