@@ -76,7 +76,7 @@ def train(resume: Optional[str],
     # if PAD_ID is None:
     #     tokenizer.add_special_tokens({"pad_token": tokenizer.eos_token})
     #     PAD_ID = tokenizer.pad_token_id
-    steps_per_epoch = 10_000
+    steps_per_epoch = 100
     cfg = GPTConfig(vocab_size=tokenizer.vocab_size, pad_id=PAD_ID)
     model = GPT(cfg)
     if resume and os.path.isfile(resume):
