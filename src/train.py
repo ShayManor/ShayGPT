@@ -39,6 +39,7 @@ def get_args():
                    default=5e-5)
     return p.parse_args()
 
+
 def save(model, step):
     torch.save(
         model.module.state_dict(),
@@ -116,35 +117,31 @@ def train(resume: Optional[str],
                       max_length=512)
         return t.input_ids, t.attention_mask
 
+    def get_text_dataset(name, split, cache_dir, token=None):
+        proc_path = os.path.join(cache_dir, f"{name.replace('/', '_')}_{split}")
+        if os.path.exists(proc_path):
+            return load_dataset("arrow", data_files={"train": f"{proc_path}/*.arrow"}, split="train")
+
+        print(f"⏳ First run: processing {name} …")
+        feats = Features({"text": Value("string")})
+        ds = load_dataset(
+            name, split=split, features=feats,
+            download_config=DownloadConfig(max_retries=100, resume_download=True),
+            use_auth_token=token
+        ).select_columns(["text"])  # keep only what you care about
+        ds = ds.flatten_indices()  # contiguous pointers → faster shuffles
+        ds.save_to_disk(proc_path)  # creates .arrow shards
+        return ds
+
+    CACHE_ROOT = "/mnt/nvme/arrow_cache"
     dl_cfg = DownloadConfig(max_retries=100, resume_download=True)
     token = os.getenv("HF_TOKEN")
-    book_ds = load_dataset(
-        "SamuelYang/bookcorpus",  # Gutenberg-derived BookCorpus
-        split="train",
-        download_config=dl_cfg,
-        use_auth_token=token
-    )
-    book_ds = book_ds.select_columns(["text"])
-    book_ds = book_ds.cast(Features({"text": Value("string")}))
-    minipile_ds = load_dataset(
-        "JeanKaddour/minipile",
-        split="train",
-        download_config=dl_cfg,
-        use_auth_token=token
-    )
-    minipile_ds = minipile_ds.select_columns(["text"])
-    minipile_ds = minipile_ds.cast(Features({"text": Value("string")}))
-    gpt_ds = load_dataset(
-        "terrycraddock/GPT2-PretrainV1-en",  # Composite GPT2 pretrain dataset
-        split="train",
-        download_config=dl_cfg,
-        use_auth_token=token
-    )
-    gpt_ds = gpt_ds.select_columns(["text"])
-    gpt_ds = gpt_ds.cast(Features({"text": Value("string")}))
+    book_ds = get_text_dataset("SamuelYang/bookcorpus", "train", CACHE_ROOT, token)
+    mini_ds = get_text_dataset("JeanKaddour/minipile", "train", CACHE_ROOT, token)
+    gpt_ds = get_text_dataset("terrycraddock/GPT2-PretrainV1-en", "train", CACHE_ROOT, token)
 
     hf_stream = interleave_datasets(
-        [book_ds, minipile_ds, gpt_ds],
+        [book_ds, mini_ds, gpt_ds],
         probabilities=[0.2, 0.3, 0.5],
         stopping_strategy="all_exhausted"
     )
@@ -212,6 +209,7 @@ def train(resume: Optional[str],
         print("⚡ Training done.  Final loss:", loss.item())
     else:
         print("No batches loaded")
+
 
 if __name__ == "__main__":
     args = get_args()
