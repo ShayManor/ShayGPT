@@ -2,6 +2,7 @@ import torch
 from tokenizer import tokenizer, BOS_ID
 from GPT import GPTConfig, GPT
 
+
 cfg = GPTConfig(vocab_size=50_257, pad_id=tokenizer.convert_tokens_to_ids('[PAD]'))
 model = GPT(cfg)
 # total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
