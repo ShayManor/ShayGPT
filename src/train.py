@@ -117,15 +117,21 @@ def train(resume: Optional[str],
     #     PAD_ID = tokenizer.pad_token_id
     steps_per_epoch = 100
     cfg = GPTConfig(vocab_size=tokenizer.vocab_size, pad_id=PAD_ID)
+    t0 = time.time()
     model = GPT(cfg)
+    print("model built in", time.time() - t0, "s")
     if resume and os.path.isfile(resume):
         state = torch.load(resume, map_location="cpu")
         model.load_state_dict(state, strict=False)
         print(f"⚡ Loaded weights from {resume}")
         del state
-    model.to(device)
+    t1 = time.time()
+    model.to(device, non_blocking=True)
+    print("moved to GPU in", time.time() - t1, "s")
     scaler = torch.amp.GradScaler('cuda')
+    t2 = time.time()
     model = DistributedDataParallel(model, device_ids=[local_rank])
+    print("wrapped in DDP in", time.time() - t2, "s")
     opt = bnb.optim.AdamW8bit(model.parameters(),
                               lr=lr,
                               betas=(0.9, 0.995),
