@@ -115,32 +115,29 @@ def train(resume: Optional[str],
 
     dl_cfg = DownloadConfig(max_retries=100, resume_download=True)
     token = os.getenv("HF_TOKEN")
-    ds = load_dataset(
-        "Skylion007/openwebtext",
+    wiki_ds = load_dataset(
+        "google/wiki40b",  # clean Wikipedia
+        "en",
         split="train",
-        streaming=True,
-        trust_remote_code=True,
         download_config=dl_cfg,
         use_auth_token=token
     )
-    ds = ds.cast(
-        Features({"id": Value("int64"), "text": Value("string")})
+    owt_ds = load_dataset(
+        "Skylion007/openwebtext",  # OpenWebText replication
+        split="train",
+        download_config=dl_cfg,
+        use_auth_token=token
     )
-    stream = ds.filter(clean_example, batched=False)
-    # wiki = load_dataset("wikitext",
-    #                     "wikitext-103-v1",
-    #                     trust_remote_code=True,
-    #                     download_config=dl_cfg,
-    #                     streaming=True,
-    #                     )["train"].filter(clean_example, batched=False)
-    # books = load_dataset("bookcorpus",
-    #                      split="train",
-    #                      trust_remote_code=True,
-    #                      download_config=dl_cfg,
-    #                      streaming=True,
-    #                      ).filter(clean_example, batched=False)
-    # hf_stream = interleave_datasets([stream, books], probabilities=[0.7, 0.3])
-    hf_stream = stream.shuffle(buffer_size=50_000, seed=2269)
+    uniform_feats = Features({"id": Value("int64"), "text": Value("string")})
+    wiki_ds = wiki_ds.cast(uniform_feats)
+    owt_ds = owt_ds.cast(uniform_feats)
+    hf_stream = interleave_datasets(
+        [wiki_ds, owt_ds],
+        probabilities=[0.2, 0.8],
+        stopping_strategy="all_exhausted"
+    )
+
+    hf_stream = hf_stream.shuffle(buffer_size=50_000, seed=2269)
     dataset = StreamDataset(hf_stream, world_size, rank)
     loader = DataLoader(
         dataset,
@@ -206,7 +203,6 @@ def train(resume: Optional[str],
         print("⚡ Training done.  Final loss:", loss.item())
     else:
         print("No batches loaded")
-
 
 if __name__ == "__main__":
     args = get_args()
