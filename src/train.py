@@ -11,6 +11,7 @@ from typing import Optional
 
 import torch, torch.nn as nn
 from datasets import load_dataset, DownloadConfig, interleave_datasets, Features, Value, load_from_disk
+from torch import bfloat16
 from torch.amp import autocast
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader
@@ -126,9 +127,9 @@ def train(resume: Optional[str],
         print(f"⚡ Loaded weights from {resume}")
         del state
     t1 = time.time()
-    model.to(device, non_blocking=True)
+    model.to(device, non_blocking=True, dtype=bfloat16)
     print("moved to GPU in", time.time() - t1, "seconds")
-    scaler = torch.amp.GradScaler('cuda')
+    scaler = torch.amp.GradScaler('cuda', enabled=False)
     t2 = time.time()
     model = DistributedDataParallel(model, device_ids=[local_rank])
     print("wrapped in DDP in", time.time() - t2, "seconds")
@@ -139,7 +140,7 @@ def train(resume: Optional[str],
                               weight_decay=0.01,
                               eps=1e-7)
     print(f'Made optimizer in {time.time() - t3} seconds')
-    accum_steps = 16
+    accum_steps = 8
     total_steps = steps_per_epoch * epochs
     optimizer_steps_per_epoch = math.ceil(steps_per_epoch / accum_steps)
     total_opt_steps = optimizer_steps_per_epoch * epochs
