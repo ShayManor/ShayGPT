@@ -277,5 +277,6 @@ if __name__ == "__main__":
         epochs=args.epochs,
         batch_size=args.batch_size,
         lr=args.lr,
-        resume=args.resume
+        resume=args.resume,
+        start=args.start
     )
