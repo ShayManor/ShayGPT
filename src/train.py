@@ -174,7 +174,7 @@ def train(resume: Optional[str],
         return enc.input_ids, enc.attention_mask
 
     idx = 1
-    while f'logfile_{idx}.txt' not in os.listdir('data'):
+    while f'logfile_{idx}.txt' in os.listdir('data'):
         idx += 1
     log_file = f'data/logfile_{idx}.txt'
     print(f"Opened logfile: {log_file}")
