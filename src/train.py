@@ -176,6 +176,7 @@ def train(resume: Optional[str],
     idx = 1
     while f'logfile_{idx}.txt' in os.listdir('data'):
         idx += 1
+        print(idx)
     log_file = f'data/logfile_{idx}.txt'
     print(f"Opened logfile: {log_file}")
     open(log_file, 'x')
