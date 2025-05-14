@@ -36,7 +36,7 @@ def get_args():
                    default=50)
     p.add_argument('--batch_size',
                    type=int,
-                   default=2)
+                   default=32)
     p.add_argument('--lr',
                    type=float,
                    default=5e-5)
@@ -116,7 +116,7 @@ def train(resume: Optional[str],
     # if PAD_ID is None:
     #     tokenizer.add_special_tokens({"pad_token": tokenizer.eos_token})
     #     PAD_ID = tokenizer.pad_token_id
-    steps_per_epoch = 100
+    steps_per_epoch = 10_000
     cfg = GPTConfig(vocab_size=tokenizer.vocab_size, pad_id=PAD_ID)
     t0 = time.time()
     model = GPT(cfg)
@@ -185,11 +185,11 @@ def train(resume: Optional[str],
 
     SCHEDULE = [
         (0, "oscar"),
-        (20, "owt"),
-        (25, "wiki"),
-        (30, "gpt"),
+        (15, "owt"),
+        (22, "wiki"),
+        (38, "gpt"),
         (33, "mini"),
-        (35, "book"),
+        (36, "book"),
     ]
 
     def select_stream(epoch):
@@ -199,6 +199,7 @@ def train(resume: Optional[str],
 
         iterator = (
             base
+            .filter(clean_example, num_proc=4)
             .shuffle(buffer_size=256, seed=epoch)
             .shard(num_shards=world_size, index=rank)
         )
@@ -211,16 +212,16 @@ def train(resume: Optional[str],
             num_workers=0,
             pin_memory=True,
             collate_fn=collate_batch
-        ), corpus_name
+        ), corpus
 
     try:
         for epoch in range(start, epochs):
             loader, name = select_stream(epoch)
             start_time = time.time()
             for step, (ids, attn_mask) in enumerate(loader):
+                attn_mask = attn_mask.to(device, non_blocking=True).bool()
                 cur_time = time.time()
                 ids = ids.to(device, non_blocking=True)
-                attn_mask = attn_mask.bool()
                 pad_mask = (attn_mask == 0)[:, :-1]
                 input = ids[:, :-1]
                 target = ids[:, 1:]
@@ -229,11 +230,11 @@ def train(resume: Optional[str],
                     flat_logits = logits.reshape(-1, logits.size(-1))
                     flat_target = target.reshape(-1)
                     loss = nn.functional.cross_entropy(
-                        flat_logits.float().clamp_(-100, 100),
+                        flat_logits.float().clamp_(-1000, 1000),
                         flat_target,
                         ignore_index=PAD_ID,
                         label_smoothing=0.01,
-                    )
+                    ) / accum_steps
                 scaler.scale(loss).backward()
                 if (step + 1) % accum_steps == 0:
                     scaler.unscale_(opt)
