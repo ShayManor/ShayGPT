@@ -36,7 +36,7 @@ def get_args():
                    default=50)
     p.add_argument('--batch_size',
                    type=int,
-                   default=32)
+                   default=2)
     p.add_argument('--lr',
                    type=float,
                    default=5e-5)
