@@ -119,7 +119,7 @@ def train(resume: Optional[str],
     cfg = GPTConfig(vocab_size=tokenizer.vocab_size, pad_id=PAD_ID)
     t0 = time.time()
     model = GPT(cfg)
-    print("model built in", time.time() - t0, "s")
+    print("model built in", time.time() - t0, "seconds")
     if resume and os.path.isfile(resume):
         state = torch.load(resume, map_location="cpu")
         model.load_state_dict(state, strict=False)
@@ -127,25 +127,29 @@ def train(resume: Optional[str],
         del state
     t1 = time.time()
     model.to(device, non_blocking=True)
-    print("moved to GPU in", time.time() - t1, "s")
+    print("moved to GPU in", time.time() - t1, "seconds")
     scaler = torch.amp.GradScaler('cuda')
     t2 = time.time()
     model = DistributedDataParallel(model, device_ids=[local_rank])
-    print("wrapped in DDP in", time.time() - t2, "s")
+    print("wrapped in DDP in", time.time() - t2, "seconds")
+    t3 = time.time()
     opt = bnb.optim.AdamW8bit(model.parameters(),
                               lr=lr,
                               betas=(0.9, 0.995),
                               weight_decay=0.01,
                               eps=1e-7)
+    print(f'Made optimizer in {time.time() - t3} seconds')
     accum_steps = 16
     total_steps = steps_per_epoch * epochs
     optimizer_steps_per_epoch = math.ceil(steps_per_epoch / accum_steps)
     total_opt_steps = optimizer_steps_per_epoch * epochs
     warmup_steps = int(0.15 * total_opt_steps)
+    t4 = time.time()
     scheduler = get_linear_schedule_with_warmup(opt,
                                                 num_warmup_steps=warmup_steps,
                                                 num_training_steps=total_opt_steps,
                                                 )
+    print(f'Created scheduler in {time.time() - t4} seconds')
     if PAD_ID is None:
         raise RuntimeError("PAD token not found in tokenizer!")
     global_step = 0
@@ -173,10 +177,10 @@ def train(resume: Optional[str],
     while f'logfile_{idx}.txt' not in os.listdir('data'):
         idx += 1
     log_file = f'data/logfile_{idx}.txt'
+    print(f"Opened logfile: {log_file}")
     open(log_file, 'x')
-
-    print(f"Wrote logfile: {log_file}")
     STREAMS = build_streams()
+    print(f"Wrote logfile")
 
     SCHEDULE = [
         (0, "oscar"),
