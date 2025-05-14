@@ -36,7 +36,7 @@ def get_args():
                    default=50)
     p.add_argument('--batch_size',
                    type=int,
-                   default=32)
+                   default=2)
     p.add_argument('--lr',
                    type=float,
                    default=5e-5)
@@ -199,7 +199,7 @@ def train(resume: Optional[str],
 
         iterator = (
             base
-            .filter(clean_example, num_proc=4)
+            .filter(clean_example)
             .shuffle(buffer_size=256, seed=epoch)
             .shard(num_shards=world_size, index=rank)
         )
