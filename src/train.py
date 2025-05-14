@@ -251,7 +251,7 @@ def train(resume: Optional[str],
                     avg_loss = sum(losses) / len(losses)
                     log = f"epoch {epoch} step {global_step} loss {accum_steps * sum(losses) / len(losses):.4f} lr = {scheduler.get_last_lr()[0]:.5} time = {time.time() - cur_time}"
                     with open(log_file, 'a') as f:
-                        f.write(log)
+                        f.write(log + '\n')
                     print(log)
                     if len(losses) > 5:
                         losses.pop(-1)
