@@ -211,11 +211,11 @@ def train(resume: Optional[str],
             num_workers=0,
             pin_memory=True,
             collate_fn=collate_batch
-        )
+        ), corpus_name
 
     try:
         for epoch in range(start, epochs):
-            loader = select_stream(epoch)
+            loader, name = select_stream(epoch)
             start_time = time.time()
             for step, (ids, attn_mask) in enumerate(loader):
                 cur_time = time.time()
@@ -257,7 +257,7 @@ def train(resume: Optional[str],
                 global_step += 1
                 if step + 1 >= steps_per_epoch:
                     print(f"Tokens/step = {batch_size * 512 * accum_steps}")
-                    print(f'Epoch time: {time.time() - start_time}')
+                    print(f'Epoch time: {time.time() - start_time} with dataset {name}')
                     break
             if local_rank == 0:
                 save(model, global_step)
