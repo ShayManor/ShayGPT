@@ -199,9 +199,10 @@ def train(resume: Optional[str],
 
         iterator = (
             base
+            .shard(num_shards=world_size, index=rank)
             .filter(clean_example)
             .shuffle(buffer_size=256, seed=epoch)
-            .shard(num_shards=world_size, index=rank)
+            .take(steps_per_epoch * batch_size)
         )
         per_epoch = steps_per_epoch * batch_size
         iterator = iterator.take(per_epoch)

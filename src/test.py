@@ -346,9 +346,9 @@ if __name__ == "__main__":
 
     model_weights_file = "checkpoint12.pth"
 
-    prompt = "The craziest, wildest story every starts with: "
+    prompt = ""
     gen_params = {
-        "max_new_tokens": 250,
+        "max_new_tokens": 100,
         "do_sample": True,
         "top_p": 0.9,
         "top_k": 50,
