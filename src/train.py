@@ -194,12 +194,18 @@ def train(resume: Optional[str],
     ]
 
     def select_stream(epoch):
+        def shard(stream):
+            try:
+                return stream.shard(num_shards=world_size, index=rank, contiguous=True)
+            except IndexError:  # <=2.17 bug path
+                return stream.skip(rank).take(sys.maxsize).select_columns(["text"])
+
         corpus_name = max(e for e, _ in SCHEDULE if e <= epoch)
         corpus = dict(SCHEDULE)[corpus_name]
         base = STREAMS[corpus]
 
         iterator = (
-            base
+            shard(base)
             .shard(num_shards=world_size, index=rank, contiguous=True)
             .filter(clean_example)
             .shuffle(buffer_size=256, seed=epoch)
