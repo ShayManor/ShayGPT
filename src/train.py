@@ -14,6 +14,7 @@ from datasets import load_dataset, DownloadConfig, interleave_datasets, Features
 from torch import bfloat16
 from torch.amp import autocast
 from torch.nn.parallel import DistributedDataParallel
+from torch.onnx.symbolic_opset9 import contiguous
 from torch.utils.data import DataLoader
 import torch.distributed as dist
 from TextDataset import TextDataset, StreamDataset
@@ -199,7 +200,7 @@ def train(resume: Optional[str],
 
         iterator = (
             base
-            .shard(num_shards=world_size, index=rank)
+            .shard(num_shards=world_size, index=rank, contiguous=True)
             .filter(clean_example)
             .shuffle(buffer_size=256, seed=epoch)
             .take(steps_per_epoch * batch_size)
