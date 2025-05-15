@@ -203,6 +203,8 @@ def train(resume: Optional[str],
             .filter(clean_example)
             .shuffle(buffer_size=256, seed=epoch)
             .take(steps_per_epoch * batch_size)
+            .skip(rank * steps_per_epoch)
+            .take(steps_per_epoch)
         )
         per_epoch = steps_per_epoch * batch_size
         iterator = iterator.take(per_epoch)
