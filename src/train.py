@@ -206,7 +206,6 @@ def train(resume: Optional[str],
 
         iterator = (
             shard(base)
-            .shard(num_shards=world_size, index=rank, contiguous=True)
             .filter(clean_example)
             .shuffle(buffer_size=256, seed=epoch)
             .take(steps_per_epoch * batch_size)
