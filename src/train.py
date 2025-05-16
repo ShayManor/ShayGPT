@@ -177,6 +177,8 @@ def train(resume: Optional[str],
         target_modules=["attn.out_proj", "mlp.0", "mlp.2"]
     )
     model = get_peft_model(model, peft_cfg).to("cuda", dtype=torch.bfloat16)
+    model.print_trainable_parameters()
+
     model = DistributedDataParallel(model, device_ids=[local_rank])
     print("wrapped in DDP in", time.time() - t2, "seconds")
     t3 = time.time()
@@ -267,7 +269,6 @@ def train(resume: Optional[str],
             collate_fn=collate_batch
         ), corpus
 
-    model.print_trainable_parameters()
     if args.stage == "sft":
         sft_ds = load_from_disk("sft_cached")
         loader = DataLoader(
