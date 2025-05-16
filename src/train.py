@@ -169,6 +169,14 @@ def train(resume: Optional[str],
     print("moved to GPU in", time.time() - t1, "seconds")
     scaler = torch.amp.GradScaler('cuda', enabled=False)
     t2 = time.time()
+    peft_cfg = LoraConfig(
+        task_type=TaskType.CAUSAL_LM,
+        r=16,
+        lora_alpha=32,
+        lora_dropout=0.05,
+        target_modules=["attn.out_proj", "mlp.0", "mlp.2"]
+    )
+    model = get_peft_model(model, peft_cfg).to("cuda", dtype=torch.bfloat16)
     model = DistributedDataParallel(model, device_ids=[local_rank])
     print("wrapped in DDP in", time.time() - t2, "seconds")
     t3 = time.time()
@@ -259,14 +267,6 @@ def train(resume: Optional[str],
             collate_fn=collate_batch
         ), corpus
 
-    peft_cfg = LoraConfig(
-        task_type=TaskType.CAUSAL_LM,
-        r=16,
-        lora_alpha=32,
-        lora_dropout=0.05,
-        target_modules=["attn.out_proj", "mlp.0", "mlp.2"]
-    )
-    model = get_peft_model(model, peft_cfg).to("cuda", dtype=torch.bfloat16)
     model.print_trainable_parameters()
     if args.stage == "sft":
         sft_ds = load_from_disk("sft_cached")
