@@ -78,11 +78,16 @@ A_TAG = "<|assistant|>\n"
 
 def to_chat(example):
     # every dataset has slightly different field names:
-    instr = example.get("instruction") or example.get("query") or example["question"]
-    resp = example.get("output") or example.get("response") or example["answer"]
+    instr_keys = ["instruction", "query", "question", "prompt"]
+    resp_keys = ["output", "response", "answer", "completion"]
+    instr = next((example.get(k) for k in instr_keys if example.get(k)), None)
+    resp = next((example.get(k) for k in resp_keys if example.get(k)), None)
+    if instr is None or resp is None:
+        print(f"Could not find keys for {example}")
+        return {"prompt": None, "response": None}
+
     prompt = f"{SYSTEM}{U_TAG}{instr.strip()}\n{A_TAG}"
-    target = resp.strip()  # model predicts this
-    return {"prompt": prompt, "response": target}
+    return {"prompt": prompt, "response": resp.strip()}
 
 
 def build_sft_ds():
