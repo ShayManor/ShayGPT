@@ -18,7 +18,7 @@ class GPTConfig:
 
 class GPT(PreTrainedModel):
     def __init__(self, cfg: GPTConfig):
-        super().__init__()
+        super().__init__(cfg)
         self.cfg = cfg
         self.tok_emb = nn.Embedding(cfg.vocab_size, cfg.d_model)
         self.pos_emb = nn.Parameter(torch.zeros(1, cfg.max_len, cfg.d_model))
