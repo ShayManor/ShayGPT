@@ -187,10 +187,10 @@ def train(resume: Optional[str],
     SCHEDULE = [
         (0, "oscar"),
         (15, "owt"),
-        (22, "wiki"),
-        (38, "gpt"),
-        (33, "mini"),
-        (36, "book"),
+        (25, "wiki"),
+        (30, "gpt"),
+        (35, "mini"),
+        (40, "book"),
     ]
 
     def select_stream(epoch):
