@@ -265,7 +265,7 @@ def train(resume: Optional[str],
     log_file = f'data/logfile_{idx}.txt'
     print(f"Opened logfile: {log_file}")
     open(log_file, 'x')
-    if Mode == Mode.TRAIN:
+    if MODE == Mode.TRAIN:
         STREAMS = build_streams()
     else:
         STREAMS = None
