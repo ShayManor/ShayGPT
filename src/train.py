@@ -78,10 +78,16 @@ A_TAG = "<|assistant|>\n"
 
 def to_chat(example):
     # every dataset has slightly different field names:
-    instr_keys = ["instruction", "query", "question", "prompt"]
-    resp_keys = ["output", "response", "answer", "completion"]
+    instr_keys = ["instruction", "query", "question", "prompt", "messages"]
+    resp_keys = ["output", "response", "answer", "completion", "messages"]
     instr = next((example.get(k) for k in instr_keys if example.get(k)), None)
     resp = next((example.get(k) for k in resp_keys if example.get(k)), None)
+    if isinstance(instr, list):
+        # first user turn
+        instr = next(m["content"] for m in instr if m.get("role") == "user")
+    if isinstance(resp, list):
+        # last assistant reply
+        resp = next(m["content"] for m in reversed(resp) if m.get("role") == "assistant")
     if instr is None or resp is None:
         print(f"Could not find keys for {example}")
         return {"prompt": None, "response": None}
