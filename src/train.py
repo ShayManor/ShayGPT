@@ -34,7 +34,6 @@ class Mode(enum.Enum):
     SFT = 1
 
 
-MODE = Mode.SFT
 
 
 def get_args():
@@ -55,6 +54,10 @@ def get_args():
     p.add_argument('--start',
                    type=int,
                    default=0,
+                   )
+    p.add_argument('--stage',
+                   type=str,
+                   default='train'
                    )
     return p.parse_args()
 
@@ -146,7 +149,21 @@ def train(resume: Optional[str],
           batch_size: int = 16,
           lr: float = 5e-5,
           start: int = 0,
+          stage: str = 'train',
           ):
+    if stage == 'sft':
+        MODE = Mode.SFT
+        if not os.path.isdir("sft_cached"):
+            ds = build_sft_ds()
+            ds = tokenize_sft(ds, tokenizer, 512)
+            ds.save_to_disk("sft_cached")
+            print("✅ sft_cached created!")
+    else:
+        MODE = Mode.TRAIN
+
+
+
+
     dist.init_process_group("nccl")
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.set_num_threads(4)
@@ -357,5 +374,6 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         lr=args.lr,
         resume=args.resume,
-        start=args.start
+        start=args.start,
+        stage=args.stage,
     )
