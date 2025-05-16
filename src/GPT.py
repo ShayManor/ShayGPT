@@ -16,7 +16,7 @@ class GPTConfig:
         self.__dict__.update(locals())
 
 
-class GPT(nn.Module, PreTrainedModel):
+class GPT(PreTrainedModel):
     def __init__(self, cfg: GPTConfig):
         super().__init__()
         self.cfg = cfg

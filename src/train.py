@@ -51,7 +51,7 @@ def get_args():
 
 
 def save(model, step):
-    model.save_pretrained(f"lora_sft{step}")
+    model.module.save_pretrained(f"lora_sft{step}")
     # torch.save(
     #     model.module.state_dict(),
     #     f"checkpoint_step{step}.pth"
