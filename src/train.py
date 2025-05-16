@@ -28,11 +28,14 @@ import bitsandbytes as bnb
 from transformers import get_cosine_schedule_with_warmup, get_linear_schedule_with_warmup
 import argparse
 
-class Mode(enum):
-    TRAIN=0
-    SFT=1
 
-MODE = Mode.TRAIN
+class Mode(enum.Enum):
+    TRAIN = 0
+    SFT = 1
+
+
+MODE = Mode.SFT
+
 
 def get_args():
     p = argparse.ArgumentParser()
@@ -276,6 +279,7 @@ def train(resume: Optional[str],
             pin_memory=True,
             collate_fn=collate_batch
         ), corpus
+
     if MODE == Mode.SFT:
         sft_ds = load_from_disk("sft_cached")
         loader = DataLoader(
@@ -344,6 +348,7 @@ def train(resume: Optional[str],
         print("⚡ Training done.  Final loss:", loss.item())
     else:
         print("No batches loaded")
+
 
 if __name__ == "__main__":
     args = get_args()
