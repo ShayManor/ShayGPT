@@ -88,7 +88,7 @@ def to_chat(example):
 def build_sft_ds():
     ds = []
     ds.append(load_dataset("Open-Orca/OpenOrca", split="train[:200000]"))
-    ds.append(load_dataset("HuggingFaceH4/ultrachat_200k", split="train"))
+    ds.append(load_dataset("HuggingFaceH4/ultrachat_200k", split="train_sft"))
     ds.append(load_dataset("databricks/databricks-dolly-15k", split="train"))
     ds = [d.map(to_chat, remove_columns=d.column_names) for d in ds]
     return concatenate_datasets(ds).shuffle(seed=42)
