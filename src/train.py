@@ -211,7 +211,7 @@ def train(resume: Optional[str],
     model = get_peft_model(model, peft_cfg).to("cuda", dtype=torch.bfloat16)
     model.print_trainable_parameters()
 
-    model = DistributedDataParallel(model, device_ids=[local_rank])
+    model = DistributedDataParallel(model, device_ids=[local_rank], find_unused_parameters=True)
     print("wrapped in DDP in", time.time() - t2, "seconds")
     t3 = time.time()
     opt = bnb.optim.AdamW8bit(model.parameters(),
