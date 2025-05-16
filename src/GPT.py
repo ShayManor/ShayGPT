@@ -52,12 +52,19 @@ class GPT(PreTrainedModel):
             if getattr(m, "bias", None) is not None:
                 nn.init.zeros_(m.bias)
 
-    def forward(self, idx, pad_mask=None):  # idx: [B,T]
+    def forward(self, ids=None, attn_mask=None, labels=None, idx=None, pad_mask = None):  # idx: [B,T]
+        if idx is None and ids is not None:
+            idx = ids
+        if pad_mask is None and ids is not None:
+            pad_mask = (ids == 0)
+
         B, T = idx.shape
         assert T <= self.cfg.max_len
+
         attn_mask = self.causal_mask[:T, :T].to(idx.device)
-        if pad_mask == None:
+        if pad_mask is None:  # when nothing provided
             pad_mask = (idx == self.cfg.pad_id)
+
         x = self.tok_emb(idx) + self.pos_emb[:, :T]  # [B,T,d]
 
         for blk in self.blocks:
