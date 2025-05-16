@@ -248,19 +248,24 @@ def train(resume: Optional[str],
 
     def collate_sft(batch):
         ids = [torch.tensor(x["input_ids"], dtype=torch.long) for x in batch]
-        lbls = [torch.tensor(x["labels"], dtype=torch.long) for x in batch]
+        ans = [torch.tensor(x["labels"], dtype=torch.long) for x in batch]
 
-        input_ids = pad_sequence(ids, batch_first=True, padding_value=PAD_ID)
-        labels = pad_sequence(lbls, batch_first=True, padding_value=PAD_ID)
+        # concatenate prompt + answer
+        seqs = [torch.cat([p, a]) for p, a in zip(ids, ans)]
 
-        # attention_mask: 1 where not padding
+        input_ids = pad_sequence(seqs, batch_first=True, padding_value=PAD_ID)
+
+        # build labels: -100 for prompt, real tokens for answer
+        label_seqs = [
+            torch.cat([torch.full_like(p, PAD_ID), a]) for p, a in zip(ids, ans)
+        ]
+        labels = pad_sequence(label_seqs, batch_first=True, padding_value=PAD_ID)
+
         attention_mask = (input_ids != PAD_ID).long()
 
-        return {
-            "input_ids": input_ids,
-            "attention_mask": attention_mask,
-            "labels": labels,
-        }
+        return {"input_ids": input_ids,
+                "attention_mask": attention_mask,
+                "labels": labels}
 
     def collate_batch(texts):
         texts = [t["text"] if isinstance(t, dict) else t for t in texts]
