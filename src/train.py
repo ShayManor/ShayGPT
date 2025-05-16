@@ -1,3 +1,4 @@
+import enum
 import itertools
 import math
 import os
@@ -27,6 +28,11 @@ import bitsandbytes as bnb
 from transformers import get_cosine_schedule_with_warmup, get_linear_schedule_with_warmup
 import argparse
 
+class Mode(enum):
+    TRAIN=0
+    SFT=1
+
+MODE = Mode.TRAIN
 
 def get_args():
     p = argparse.ArgumentParser()
@@ -228,8 +234,10 @@ def train(resume: Optional[str],
     log_file = f'data/logfile_{idx}.txt'
     print(f"Opened logfile: {log_file}")
     open(log_file, 'x')
-    # STREAMS = build_streams()
-    STREAMS = None
+    if Mode == Mode.TRAIN:
+        STREAMS = build_streams()
+    else:
+        STREAMS = None
     print(f"Wrote logfile")
 
     SCHEDULE = [
@@ -268,8 +276,7 @@ def train(resume: Optional[str],
             pin_memory=True,
             collate_fn=collate_batch
         ), corpus
-
-    if args.stage == "sft":
+    if MODE == Mode.SFT:
         sft_ds = load_from_disk("sft_cached")
         loader = DataLoader(
             sft_ds,
