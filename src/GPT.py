@@ -2,7 +2,7 @@ from typing import Optional
 
 import torch
 from torch import nn
-
+from transformers import PreTrainedModel
 
 class GPTConfig:
     def __init__(self,
@@ -16,7 +16,7 @@ class GPTConfig:
         self.__dict__.update(locals())
 
 
-class GPT(nn.Module):
+class GPT(nn.Module, PreTrainedModel):
     def __init__(self, cfg: GPTConfig):
         super().__init__()
         self.cfg = cfg
