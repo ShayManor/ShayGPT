@@ -358,16 +358,18 @@ def train(resume: Optional[str],
                 with autocast(device_type="cuda", dtype=torch.bfloat16):
                     if MODE == Mode.TRAIN:
                         logits = model(input, pad_mask)
+                        loss = nn.functional.cross_entropy(
+                            logits.reshape(-1, logits.size(-1)),
+                            ids[:, 1:].reshape(-1),
+                            ignore_index=PAD_ID) / accum_steps
                     else:
-                        logits = model(ids, attn_mask)
+                        logits = model(ids, attn_mask=attn_mask)
+                        loss = nn.functional.cross_entropy(
+                            logits.reshape(-1, logits.size(-1)),
+                            labels.to(device).reshape(-1),
+                            ignore_index=PAD_ID) / accum_steps
                     flat_logits = logits.reshape(-1, logits.size(-1))
                     flat_target = target.reshape(-1)
-                    loss = nn.functional.cross_entropy(
-                        flat_logits.float().clamp_(-1000, 1000),
-                        flat_target,
-                        ignore_index=PAD_ID,
-                        label_smoothing=0.0,
-                    ) / accum_steps
                 scaler.scale(loss).backward()
                 if (step + 1) % accum_steps == 0:
                     scaler.unscale_(opt)
