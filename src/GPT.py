@@ -52,29 +52,32 @@ class GPT(PreTrainedModel):
             if getattr(m, "bias", None) is not None:
                 nn.init.zeros_(m.bias)
 
-    def forward(self, input_ids=None, attention_mask=None, labels=None, idx=None, pad_mask = None):  # idx: [B,T]
-        if idx is None and input_ids is not None:
+    def forward(self, input_ids=None, attention_mask=None, inputs_embeds=None, labels=None, idx=None,
+                pad_mask=None):  # idx: [B,T]
+        if input_ids is None and inputs_embeds is None:
+            raise ValueError("Need input_ids or inputs_embeds")
+
+        if inputs_embeds is not None:
+            x = inputs_embeds
+        else:
             idx = input_ids
+            B, T = idx.shape
+            assert T <= self.cfg.max_len
+            x = self.tok_emb(idx) + self.pos_emb[:, :T]  # [B,T,d]
+
+        pad_mask = (attention_mask == 0) if attention_mask is not None else None
         if pad_mask is None and input_ids is not None:
-            pad_mask = (input_ids == 0)
+            pad_mask = (input_ids == self.cfg.pad_id)
 
-        B, T = idx.shape
-        assert T <= self.cfg.max_len
-
-        attn_mask = self.causal_mask[:T, :T].to(idx.device)
-        if pad_mask is None:  # when nothing provided
-            pad_mask = (idx == self.cfg.pad_id)
-
-        x = self.tok_emb(idx) + self.pos_emb[:, :T]  # [B,T,d]
+        attn_mask = self.causal_mask[: x.size(1), : x.size(1)].to(x.device)
 
         for blk in self.blocks:
             x = x + blk["attn"](
-                blk["ln1"](x),
-                blk["ln1"](x),
-                blk["ln1"](x),
+                blk["ln1"](x), blk["ln1"](x), blk["ln1"](x),
                 attn_mask=attn_mask,
                 key_padding_mask=pad_mask,
             )[0]
             x = x + blk["mlp"](blk["ln2"](x))
+
         x = self.ln_f(x)
         return self.lm_head(x)  # [B,T,V]
