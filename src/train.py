@@ -34,8 +34,6 @@ class Mode(enum.Enum):
     SFT = 1
 
 
-
-
 def get_args():
     p = argparse.ArgumentParser()
     p.add_argument('--resume',
@@ -171,9 +169,6 @@ def train(resume: Optional[str],
             print("✅ sft_cached created!")
     else:
         MODE = Mode.TRAIN
-
-
-
 
     dist.init_process_group("nccl")
     torch.backends.cuda.matmul.allow_tf32 = True
@@ -328,50 +323,57 @@ def train(resume: Optional[str],
             else:
                 name = "sft"
             start_time = time.time()
-            for step, (ids, attn_mask) in enumerate(loader):
-                attn_mask = attn_mask.to(device, non_blocking=True).bool()
-                cur_time = time.time()
-                ids = ids.to(device, non_blocking=True)
-                pad_mask = (attn_mask == 0)[:, :-1]
-                input = ids[:, :-1]
-                target = ids[:, 1:]
-                with autocast(device_type="cuda", dtype=torch.bfloat16):
-                    logits = model(input, pad_mask)
-                    flat_logits = logits.reshape(-1, logits.size(-1))
-                    flat_target = target.reshape(-1)
-                    loss = nn.functional.cross_entropy(
-                        flat_logits.float().clamp_(-1000, 1000),
-                        flat_target,
-                        ignore_index=PAD_ID,
-                        label_smoothing=0.01,
-                    ) / accum_steps
-                scaler.scale(loss).backward()
-                if (step + 1) % accum_steps == 0:
-                    scaler.unscale_(opt)
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-                    scale_before = scaler.get_scale()
-                    scaler.step(opt)
-                    scaler.update()
-                    if scaler.get_scale() == scale_before:
-                        scheduler.step()
-                    opt.zero_grad(set_to_none=True)
+            for step, batch in enumerate(loader):
+                if MODE == Mode.TRAIN:
+                    ids, attn_mask = batch
+                    labels = None
+                else:
+                    ids = batch["input_ids"]
+                    attn_mask = batch["attention_mask"]
+                    labels = batch["labels"]
+            attn_mask = attn_mask.to(device, non_blocking=True).bool()
+            cur_time = time.time()
+            ids = ids.to(device, non_blocking=True)
+            pad_mask = (attn_mask == 0)[:, :-1]
+            input = ids[:, :-1]
+            target = ids[:, 1:]
+            with autocast(device_type="cuda", dtype=torch.bfloat16):
+                logits = model(input, pad_mask)
+                flat_logits = logits.reshape(-1, logits.size(-1))
+                flat_target = target.reshape(-1)
+                loss = nn.functional.cross_entropy(
+                    flat_logits.float().clamp_(-1000, 1000),
+                    flat_target,
+                    ignore_index=PAD_ID,
+                    label_smoothing=0.01,
+                ) / accum_steps
+            scaler.scale(loss).backward()
+            if (step + 1) % accum_steps == 0:
+                scaler.unscale_(opt)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                scale_before = scaler.get_scale()
+                scaler.step(opt)
+                scaler.update()
+                if scaler.get_scale() == scale_before:
+                    scheduler.step()
+                opt.zero_grad(set_to_none=True)
 
-                if global_step % 100 == 0 and local_rank == 0:
-                    losses.insert(0, loss.item())
-                    avg_loss = sum(losses) / len(losses)
-                    log = f"epoch {epoch} step {global_step} loss {accum_steps * sum(losses) / len(losses):.4f} lr = {scheduler.get_last_lr()[0]:.5} time = {time.time() - cur_time}"
-                    with open(log_file, 'a') as f:
-                        f.write(log + '\n')
-                    print(log)
-                    if len(losses) > 5:
-                        losses.pop(-1)
-                global_step += 1
-                if step + 1 >= steps_per_epoch:
-                    print(f"Tokens/step = {batch_size * 512 * accum_steps}")
-                    print(f'Epoch time: {time.time() - start_time} with dataset {name}')
-                    break
-            if local_rank == 0:
-                save(model, global_step)
+            if global_step % 100 == 0 and local_rank == 0:
+                losses.insert(0, loss.item())
+                avg_loss = sum(losses) / len(losses)
+                log = f"epoch {epoch} step {global_step} loss {accum_steps * sum(losses) / len(losses):.4f} lr = {scheduler.get_last_lr()[0]:.5} time = {time.time() - cur_time}"
+                with open(log_file, 'a') as f:
+                    f.write(log + '\n')
+                print(log)
+                if len(losses) > 5:
+                    losses.pop(-1)
+            global_step += 1
+            if step + 1 >= steps_per_epoch:
+                print(f"Tokens/step = {batch_size * 512 * accum_steps}")
+                print(f'Epoch time: {time.time() - start_time} with dataset {name}')
+                break
+        if local_rank == 0:
+            save(model, global_step)
     except KeyboardInterrupt:
         save(model, global_step)
     torch.save(model.module.tok_emb.weight.cpu(), "embed_matrix.pth")
