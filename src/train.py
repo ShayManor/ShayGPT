@@ -8,9 +8,11 @@ import sys
 import time
 from select import select
 from typing import Optional
+from peft import LoraConfig, get_peft_model, TaskType
 
 import torch, torch.nn as nn
-from datasets import load_dataset, DownloadConfig, interleave_datasets, Features, Value, load_from_disk
+from datasets import load_dataset, DownloadConfig, interleave_datasets, Features, Value, load_from_disk, \
+    concatenate_datasets
 from torch import bfloat16
 from torch.amp import autocast
 from torch.nn.parallel import DistributedDataParallel
@@ -49,11 +51,46 @@ def get_args():
 
 
 def save(model, step):
-    torch.save(
-        model.module.state_dict(),
-        f"checkpoint_step{step}.pth"
-    )
+    model.save_pretrained(f"lora_sft{step}")
+    # torch.save(
+    #     model.module.state_dict(),
+    #     f"checkpoint_step{step}.pth"
+    # )
     print(f"⚡ Saved checkpoint at step {step}")
+
+
+SYSTEM = "<|system|>\nYou are a helpful assistant.\n"
+U_TAG = "<|user|>\n"
+A_TAG = "<|assistant|>\n"
+
+
+def to_chat(example):
+    # every dataset has slightly different field names:
+    instr = example.get("instruction") or example.get("query") or example["question"]
+    resp = example.get("output") or example.get("response") or example["answer"]
+    prompt = f"{SYSTEM}{U_TAG}{instr.strip()}\n{A_TAG}"
+    target = resp.strip()  # model predicts this
+    return {"prompt": prompt, "response": target}
+
+
+def build_sft_ds():
+    ds = []
+    ds.append(load_dataset("Open-Orca/OpenOrca", split="train[:200000]"))
+    ds.append(load_dataset("HuggingFaceH4/ultrachat_200k", split="train"))
+    ds.append(load_dataset("databricks/databricks-dolly-15k", split="train"))
+    ds = [d.map(to_chat, remove_columns=d.column_names) for d in ds]
+    return concatenate_datasets(ds).shuffle(seed=42)
+
+
+def tokenize_sft(chat_ds, tok, max_len=1024):
+    def _tok(ex):
+        model_in = tok(ex["prompt"], truncation=True, max_length=max_len)
+        with tok.as_target_tokenizer():
+            lbls = tok(ex["response"], truncation=True, max_length=max_len)
+        model_in["labels"] = lbls["input_ids"]
+        return model_in
+
+    return chat_ds.map(_tok, batched=True, remove_columns=["prompt", "response"])
 
 
 def build_streams():
@@ -181,7 +218,8 @@ def train(resume: Optional[str],
     log_file = f'data/logfile_{idx}.txt'
     print(f"Opened logfile: {log_file}")
     open(log_file, 'x')
-    STREAMS = build_streams()
+    # STREAMS = build_streams()
+    STREAMS = None
     print(f"Wrote logfile")
 
     SCHEDULE = [
@@ -220,6 +258,28 @@ def train(resume: Optional[str],
             pin_memory=True,
             collate_fn=collate_batch
         ), corpus
+
+    peft_cfg = LoraConfig(
+        task_type=TaskType.CAUSAL_LM,
+        r=16,
+        lora_alpha=32,
+        lora_dropout=0.05,
+        target_modules=["attn.q_proj", "attn.v_proj"]  # adapt only Q,V
+    )
+    model = get_peft_model(model, peft_cfg).to("cuda", dtype=torch.bfloat16)
+    model.print_trainable_parameters()
+    if args.stage == "sft":
+        sft_ds = load_from_disk("sft_cached")
+        loader = DataLoader(
+            sft_ds,
+            batch_size=args.batch_size,
+            shuffle=True,
+            collate_fn=lambda b: {
+                "input_ids": torch.tensor([x["input_ids"] for x in b]),
+                "attention_mask": torch.tensor([x["attention_mask"] for x in b]),
+                "labels": torch.tensor([x["labels"] for x in b]),
+            }
+        )
 
     try:
         for epoch in range(start, epochs):
@@ -276,7 +336,6 @@ def train(resume: Optional[str],
         print("⚡ Training done.  Final loss:", loss.item())
     else:
         print("No batches loaded")
-
 
 if __name__ == "__main__":
     args = get_args()
