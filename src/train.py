@@ -157,7 +157,7 @@ def train(resume: Optional[str],
     steps_per_epoch = 10_000
     cfg = GPTConfig(vocab_size=tokenizer.vocab_size, pad_id=PAD_ID)
     t0 = time.time()
-    model = GPT(cfg)
+    model = GPT(cfg=cfg)
     print("model built in", time.time() - t0, "seconds")
     if resume and os.path.isfile(resume):
         state = torch.load(resume, map_location="cpu")

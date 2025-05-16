@@ -6,3 +6,4 @@ pandas
 tokenizers
 pathlib
 datasets
+peft
