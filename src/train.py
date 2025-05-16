@@ -88,7 +88,7 @@ def to_chat(example):
         resp = next(m["content"] for m in reversed(resp) if m.get("role") == "assistant")
     if instr is None or resp is None:
         print(f"Could not find keys for {example}")
-        return {"prompt": None, "response": None}
+        return None
 
     prompt = f"{SYSTEM}{U_TAG}{instr.strip()}\n{A_TAG}"
     return {"prompt": prompt, "response": resp.strip()}
