@@ -2,17 +2,13 @@ from typing import Optional
 
 import torch
 from torch import nn
-from transformers import PreTrainedModel
+from transformers import PreTrainedModel, PretrainedConfig
 
-class GPTConfig:
-    def __init__(self,
-                 vocab_size,
-                 pad_id: Optional[int],
-                 n_layer=20,
-                 n_head=20,
-                 d_model=1280,
-                 dropout=0.06,
-                 max_len=512):
+
+class GPTConfig(PretrainedConfig):
+    def __init__(self, vocab_size, pad_id: Optional[int], n_layer=20, n_head=20, d_model=1280, dropout=0.06,
+                 max_len=512, **kwargs):
+        super().__init__(**kwargs)
         self.__dict__.update(locals())
 
 
