@@ -17,6 +17,7 @@ from datasets import load_dataset, DownloadConfig, interleave_datasets, Features
 from torch import bfloat16
 from torch.amp import autocast
 from torch.nn.parallel import DistributedDataParallel
+from torch.nn.utils.rnn import pad_sequence
 from torch.onnx.symbolic_opset9 import contiguous
 from torch.utils.data import DataLoader
 import torch.distributed as dist
@@ -245,6 +246,22 @@ def train(resume: Optional[str],
         ascii_chars = sum(1 for c in txt if ord(c) < 128)
         return ascii_chars / len(txt) >= 0.95
 
+    def collate_sft(batch):
+        ids = [torch.tensor(x["input_ids"], dtype=torch.long) for x in batch]
+        lbls = [torch.tensor(x["labels"], dtype=torch.long) for x in batch]
+
+        input_ids = pad_sequence(ids, batch_first=True, padding_value=PAD_ID)
+        labels = pad_sequence(lbls, batch_first=True, padding_value=PAD_ID)
+
+        # attention_mask: 1 where not padding
+        attention_mask = (input_ids != PAD_ID).long()
+
+        return {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "labels": labels,
+        }
+
     def collate_batch(texts):
         texts = [t["text"] if isinstance(t, dict) else t for t in texts]
         enc = tokenizer(texts,
@@ -309,11 +326,7 @@ def train(resume: Optional[str],
             sft_ds,
             batch_size=args.batch_size,
             shuffle=True,
-            collate_fn=lambda b: {
-                "input_ids": torch.tensor([x["input_ids"] for x in b]),
-                "attention_mask": torch.tensor([x["attention_mask"] for x in b]),
-                "labels": torch.tensor([x["labels"] for x in b]),
-            }
+            collate_fn=collate_sft
         )
 
     try:
