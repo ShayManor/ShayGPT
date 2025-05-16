@@ -264,7 +264,7 @@ def train(resume: Optional[str],
         r=16,
         lora_alpha=32,
         lora_dropout=0.05,
-        target_modules=["attn.q_proj", "attn.v_proj"]  # adapt only Q,V
+        target_modules=["attn.out_proj", "mlp.0", "mlp.2"]
     )
     model = get_peft_model(model, peft_cfg).to("cuda", dtype=torch.bfloat16)
     model.print_trainable_parameters()
