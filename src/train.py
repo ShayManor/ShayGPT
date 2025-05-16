@@ -323,7 +323,10 @@ def train(resume: Optional[str],
 
     try:
         for epoch in range(start, epochs):
-            loader, name = select_stream(epoch)
+            if MODE == Mode.TRAIN:
+                loader, name = select_stream(epoch)
+            else:
+                name = "sft"
             start_time = time.time()
             for step, (ids, attn_mask) in enumerate(loader):
                 attn_mask = attn_mask.to(device, non_blocking=True).bool()
