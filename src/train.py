@@ -250,7 +250,7 @@ def train(resume: Optional[str],
         prompt = [torch.tensor(x["input_ids"], dtype=torch.long) for x in batch]
         answer = [torch.tensor(x["labels"], dtype=torch.long) for x in batch]
 
-        seqs = [torch.cat([p, a]) for p, a in zip(prompt, answer)]
+        seqs = [torch.cat([p, a])[:MAXLEN] for p, a in zip(prompt, answer)]
         ids = pad_sequence(seqs, batch_first=True, padding_value=PAD_ID)
         IGNORE = -100
         label_seqs = [torch.cat([torch.full_like(p, IGNORE), a]) for p, a in zip(prompt, answer)]
