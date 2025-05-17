@@ -253,12 +253,14 @@ def train(resume: Optional[str],
         seqs = [torch.cat([p, a])[:MAXLEN] for p, a in zip(prompt, answer)]
         ids = pad_sequence(seqs, batch_first=True, padding_value=PAD_ID)
         IGNORE = -100
-        label_seqs = [torch.cat([torch.full_like(p, IGNORE), a]) for p, a in zip(prompt, answer)]
+        label_seqs = [torch.cat([torch.full_like(p, IGNORE), a])[:MAXLEN] for p, a in zip(prompt, answer)]
         labels = pad_sequence(label_seqs, batch_first=True, padding_value=IGNORE)
 
         # finally shift right once
-        labels = torch.cat([torch.full((labels.size(0), 1), IGNORE, device=labels.device), labels[:, :-1]], dim=1)
-
+        labels = torch.cat(
+            [torch.full((labels.size(0), 1), IGNORE, device=labels.device), labels[:, :-1]],
+            dim=1,
+        )
         attn_mask = (ids != PAD_ID).long()
         return {"input_ids": ids, "attention_mask": attn_mask, "labels": labels}
 
