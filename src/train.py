@@ -8,9 +8,11 @@ import shutil
 import sys
 import time
 from select import select
+import safetensors.torch as st
 from typing import Optional
 from peft import LoraConfig, get_peft_model, TaskType
-
+from peft import PeftModel, PeftModelForCausalLM
+from torch.nn.parallel import DistributedDataParallel as DDP
 import torch, torch.nn as nn
 from datasets import load_dataset, DownloadConfig, interleave_datasets, Features, Value, load_from_disk, \
     concatenate_datasets
@@ -69,15 +71,29 @@ def save(model, step, MODE):
         )
         print(f"⚡ Saved checkpoint at step {step}")
     else:
-        if dist.get_rank() != 0:  # only rank-0 saves
-            return
-        out_dir = f"lora_sft{step}"
-        os.makedirs(out_dir, exist_ok=True)
+        rank = dist.get_rank()
+        is_ddp = isinstance(model, DDP)
+        base = model.module if is_ddp else model
+        if rank == 0:
+            out_dir = f"lora_sft{step}"
+            os.makedirs(out_dir, exist_ok=True)
+            base.save_pretrained(out_dir, safe_serialization=True)  # adapter_model.safetensors
+            tokenizer.save_pretrained(out_dir)
+            print(f"✅ LoRA adapter saved to  {out_dir}")
 
-        model_to_save = model.module if isinstance(model, DistributedDataParallel) else model
-        model_to_save.save_pretrained(out_dir, safe_serialization=True)  # ⇒ adapter_model.safetensors
-        tokenizer.save_pretrained(out_dir)  # copy tok files
-        print(f"✅ LoRA adapter saved to {out_dir}")
+            # ---------- 3. optionally merge & dump single file ----------------------
+            # run **only** on rank-0 and only if this really is a PEFT model
+        if rank != 0 or not isinstance(base, PeftModel):
+            return
+
+        print("🔀 merging LoRA …")
+        merged = base.merge_and_unload()  # happens on-GPU → fast
+        merged.eval().float()  # save in fp32 – safest
+
+        merged_file = f"gpt_sft_merged_step{step}.safetensors"
+        st.save_file(merged.state_dict(), merged_file)  # ~3–6× smaller than .pth
+        print(f"💾 merged model written to {merged_file} "
+              f"({os.path.getsize(merged_file) / 1e6:.1f} MB)")
 
 
 SYSTEM = "<|system|>\nYou are a helpful assistant.\n"
