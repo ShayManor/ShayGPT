@@ -291,18 +291,18 @@ def train(resume: Optional[str],
                         truncation=True,
                         max_length=512)
         return enc.input_ids, enc.attention_mask
-
-    idx = 1
-    while f'logfile_{idx}.txt' in os.listdir('data'):
-        idx += 1
-    log_file = f'data/logfile_{idx + 1}.txt'
-    print(f"Opened logfile: {log_file}")
-    open(log_file, 'x')
-    if MODE == Mode.TRAIN:
-        STREAMS = build_streams()
-    else:
-        STREAMS = None
-    print(f"Wrote logfile")
+    if local_rank == 0:
+        idx = 1
+        while f'logfile_{idx}.txt' in os.listdir('data'):
+            idx += 1
+        log_file = f'data/logfile_{idx + 1}.txt'
+        print(f"Opened logfile: {log_file}")
+        open(log_file, 'x')
+        if MODE == Mode.TRAIN:
+            STREAMS = build_streams()
+        else:
+            STREAMS = None
+        print(f"Wrote logfile")
 
     SCHEDULE = [
         (0, "oscar"),
