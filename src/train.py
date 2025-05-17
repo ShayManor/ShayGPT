@@ -29,7 +29,7 @@ import bitsandbytes as bnb
 from transformers import get_cosine_schedule_with_warmup, get_linear_schedule_with_warmup
 import argparse
 
-
+MAXLEN = 512
 class Mode(enum.Enum):
     TRAIN = 0
     SFT = 1
@@ -251,13 +251,13 @@ def train(resume: Optional[str],
         ans = [torch.tensor(x["labels"], dtype=torch.long) for x in batch]
 
         # concatenate prompt + answer
-        seqs = [torch.cat([p, a]) for p, a in zip(ids, ans)]
+        seqs = [torch.cat([p, a])[:MAXLEN] for p, a in zip(ids, ans)]
 
         input_ids = pad_sequence(seqs, batch_first=True, padding_value=PAD_ID)
 
         # build labels: -100 for prompt, real tokens for answer
         label_seqs = [
-            torch.cat([torch.full_like(p, PAD_ID), a]) for p, a in zip(ids, ans)
+            torch.cat([torch.full_like(p, PAD_ID), a])[:MAXLEN] for p, a in zip(ids, ans)
         ]
         labels = pad_sequence(label_seqs, batch_first=True, padding_value=PAD_ID)
 
