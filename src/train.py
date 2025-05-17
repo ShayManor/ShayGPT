@@ -360,9 +360,10 @@ def train(resume: Optional[str],
                     else:
                         logits = model(ids, attn_mask=attn_mask)
                         loss = nn.functional.cross_entropy(
-                            logits.reshape(-1, logits.size(-1)),
-                            labels.to(device).reshape(-1),
-                            ignore_index=PAD_ID) / accum_steps
+                            logits.view(-1, logits.size(-1)),
+                            labels.view(-1),
+                            ignore_index=-100
+                        ) / accum_steps
                     flat_logits = logits.reshape(-1, logits.size(-1))
                     flat_target = target.reshape(-1)
                 scaler.scale(loss).backward()
