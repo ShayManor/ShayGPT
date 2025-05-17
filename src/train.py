@@ -90,7 +90,7 @@ def save(model, step, MODE):
         merged = base.merge_and_unload()  # happens on-GPU → fast
         merged.eval().float()  # save in fp32 – safest
 
-        merged_file = f"gpt_sft_merged_step{step}.safetensors"
+        merged_file = f"sft_merged_step{step}.safetensors"
         st.save_file(merged.state_dict(), merged_file)  # ~3–6× smaller than .pth
         print(f"💾 merged model written to {merged_file} "
               f"({os.path.getsize(merged_file) / 1e6:.1f} MB)")
