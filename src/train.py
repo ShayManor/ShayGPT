@@ -61,13 +61,23 @@ def get_args():
     return p.parse_args()
 
 
-def save(model, step):
-    model.module.save_pretrained(f"lora_sft{step}")
-    # torch.save(
-    #     model.module.state_dict(),
-    #     f"checkpoint_step{step}.pth"
-    # )
-    print(f"⚡ Saved checkpoint at step {step}")
+def save(model, step, MODE):
+    if MODE == Mode.TRAIN:
+        torch.save(
+            model.module.state_dict(),
+            f"checkpoint_step{step}.pth"
+        )
+        print(f"⚡ Saved checkpoint at step {step}")
+    else:
+        if dist.get_rank() != 0:  # only rank-0 saves
+            return
+        out_dir = f"lora_sft{step}"
+        os.makedirs(out_dir, exist_ok=True)
+
+        model_to_save = model.module if isinstance(model, DistributedDataParallel) else model
+        model_to_save.save_pretrained(out_dir, safe_serialization=True)  # ⇒ adapter_model.safetensors
+        tokenizer.save_pretrained(out_dir)  # copy tok files
+        print(f"✅ LoRA adapter saved to {out_dir}")
 
 
 SYSTEM = "<|system|>\nYou are a helpful assistant.\n"
@@ -394,9 +404,9 @@ def train(resume: Optional[str],
                     print(f'Epoch time: {time.time() - start_time} with dataset {name}')
                     break
             if local_rank == 0:
-                save(model, global_step)
+                save(model, global_step, MODE)
     except KeyboardInterrupt:
-        save(model, global_step)
+        save(model, global_step, MODE)
     torch.save(model.module.tok_emb.weight.cpu(), "embed_matrix.pth")
     if "loss" in locals():
         print("⚡ Training done.  Final loss:", loss.item())
