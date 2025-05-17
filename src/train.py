@@ -295,14 +295,14 @@ def train(resume: Optional[str],
         idx = 1
         while f'logfile_{idx}.txt' in os.listdir('data'):
             idx += 1
-        log_file = f'data/logfile_{idx + 1}.txt'
+        log_file = f'data/logfile_{idx}.txt'
         print(f"Opened logfile: {log_file}")
         open(log_file, 'x')
-        if MODE == Mode.TRAIN:
-            STREAMS = build_streams()
-        else:
-            STREAMS = None
-        print(f"Wrote logfile")
+    if MODE == Mode.TRAIN:
+        STREAMS = build_streams()
+    else:
+        STREAMS = None
+    print(f"Wrote logfile")
 
     SCHEDULE = [
         (0, "oscar"),
