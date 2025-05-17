@@ -247,25 +247,20 @@ def train(resume: Optional[str],
         return ascii_chars / len(txt) >= 0.95
 
     def collate_sft(batch):
-        ids = [torch.tensor(x["input_ids"], dtype=torch.long) for x in batch]
-        ans = [torch.tensor(x["labels"], dtype=torch.long) for x in batch]
+        prompt = [torch.tensor(x["input_ids"], dtype=torch.long) for x in batch]
+        answer = [torch.tensor(x["labels"], dtype=torch.long) for x in batch]
 
-        # concatenate prompt + answer
-        seqs = [torch.cat([p, a])[:MAXLEN] for p, a in zip(ids, ans)]
+        seqs = [torch.cat([p, a]) for p, a in zip(prompt, answer)]
+        ids = pad_sequence(seqs, batch_first=True, padding_value=PAD_ID)
+        IGNORE = -100
+        label_seqs = [torch.cat([torch.full_like(p, IGNORE), a]) for p, a in zip(prompt, answer)]
+        labels = pad_sequence(label_seqs, batch_first=True, padding_value=IGNORE)
 
-        input_ids = pad_sequence(seqs, batch_first=True, padding_value=PAD_ID)
+        # finally shift right once
+        labels = torch.cat([torch.full((labels.size(0), 1), IGNORE, device=labels.device), labels[:, :-1]], dim=1)
 
-        # build labels: -100 for prompt, real tokens for answer
-        label_seqs = [
-            torch.cat([torch.full_like(p, PAD_ID), a])[:MAXLEN] for p, a in zip(ids, ans)
-        ]
-        labels = pad_sequence(label_seqs, batch_first=True, padding_value=PAD_ID)
-
-        attention_mask = (input_ids != PAD_ID).long()
-
-        return {"input_ids": input_ids,
-                "attention_mask": attention_mask,
-                "labels": labels}
+        attn_mask = (ids != PAD_ID).long()
+        return {"input_ids": ids, "attention_mask": attn_mask, "labels": labels}
 
     def collate_batch(texts):
         texts = [t["text"] if isinstance(t, dict) else t for t in texts]
