@@ -85,10 +85,8 @@ def save(model, step, MODE):
         if isinstance(base, PeftModel):
             print("🔀 merging LoRA into base weights…")
             merged = base.merge_and_unload().eval().float()
-            merged_dir = f"merged_sft{step}"
-            os.makedirs(merged_dir, exist_ok=True)
-            merged.save_pretrained(merged_dir, safe_serialization=True)
-            print(f"💾 full merged model saved to {merged_dir}")
+            merged.save_pretrained(out_dir, safe_serialization=True)
+            print(f"💾 full merged model saved to {out_dir}/pytorch_model.safetensors")
 
 
 SYSTEM = "<|system|>\nYou are a helpful assistant.\n"

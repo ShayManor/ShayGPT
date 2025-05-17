@@ -8,7 +8,7 @@ from transformers import PreTrainedModel, PretrainedConfig
 class GPTConfig(PretrainedConfig):
     def __init__(self, vocab_size, pad_id: Optional[int], n_layer=20, n_head=20, d_model=1280, dropout=0.06,
                  max_len=512, **kwargs):
-        super().__init__(**kwargs)
+        super().__init__(vocab_size=vocab_size, pad_token_id=pad_id, **kwargs)
         self.__dict__.update(locals())
 
 
