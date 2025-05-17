@@ -72,28 +72,23 @@ def save(model, step, MODE):
         print(f"⚡ Saved checkpoint at step {step}")
     else:
         rank = dist.get_rank()
-        is_ddp = isinstance(model, DDP)
-        base = model.module if is_ddp else model
-        if rank == 0:
-            out_dir = f"lora_sft{step}"
-            os.makedirs(out_dir, exist_ok=True)
-            base.save_pretrained(out_dir, safe_serialization=True)  # adapter_model.safetensors
-            tokenizer.save_pretrained(out_dir)
-            print(f"✅ LoRA adapter saved to  {out_dir}")
-
-            # ---------- 3. optionally merge & dump single file ----------------------
-            # run **only** on rank-0 and only if this really is a PEFT model
-        if rank != 0 or not isinstance(base, PeftModel):
+        if rank != 0:
             return
 
-        print("🔀 merging LoRA …")
-        merged = base.merge_and_unload()  # happens on-GPU → fast
-        merged.eval().float()  # save in fp32 – safest
+        base = model.module if isinstance(model, DDP) else model
 
-        merged_file = f"sft_merged_step{step}.safetensors"
-        st.save_file(merged.state_dict(), merged_file)  # ~3–6× smaller than .pth
-        print(f"💾 merged model written to {merged_file} "
-              f"({os.path.getsize(merged_file) / 1e6:.1f} MB)")
+        out_dir = f"lora_sft{step}"
+        base.save_pretrained(out_dir, safe_serialization=True)
+        tokenizer.save_pretrained(out_dir)
+        print(f"✅ LoRA adapter saved to {out_dir}")
+
+        if isinstance(base, PeftModel):
+            print("🔀 merging LoRA into base weights…")
+            merged = base.merge_and_unload().eval().float()
+            merged_dir = f"merged_sft{step}"
+            os.makedirs(merged_dir, exist_ok=True)
+            merged.save_pretrained(merged_dir, safe_serialization=True)
+            print(f"💾 full merged model saved to {merged_dir}")
 
 
 SYSTEM = "<|system|>\nYou are a helpful assistant.\n"
