@@ -341,9 +341,9 @@ def train(resume: Optional[str],
                     ids, attn_mask = batch
                     labels = None
                 else:
-                    ids = batch["input_ids"]
-                    attn_mask = batch["attention_mask"]
-                    labels = batch["labels"]
+                    ids = batch["input_ids"].to(device)
+                    attn_mask = batch["attention_mask"].to(device)
+                    labels = batch["labels"].to(device)
                 attn_mask = attn_mask.to(device, non_blocking=True).bool()
                 cur_time = time.time()
                 ids = ids.to(device, non_blocking=True)
