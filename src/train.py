@@ -74,10 +74,10 @@ def save(model, step, MODE):
         rank = dist.get_rank()
         if rank != 0:
             return
-
         base = model.module if isinstance(model, DDP) else model
 
         out_dir = f"lora_sft{step}"
+        torch.save(base.state_dict(), f"{out_dir}merged_model.pth")
         base.save_pretrained(out_dir, safe_serialization=True)
         tokenizer.save_pretrained(out_dir)
         print(f"✅ LoRA adapter saved to {out_dir}")
@@ -266,22 +266,18 @@ def train(resume: Optional[str],
         return ascii_chars / len(txt) >= 0.95
 
     def collate_sft(batch):
+        IGNORE = -100
         prompt = [torch.tensor(x["input_ids"], dtype=torch.long) for x in batch]
         answer = [torch.tensor(x["labels"], dtype=torch.long) for x in batch]
 
-        seqs = [torch.cat([p, a])[:MAXLEN] for p, a in zip(prompt, answer)]
-        ids = pad_sequence(seqs, batch_first=True, padding_value=PAD_ID)
-        IGNORE = -100
-        label_seqs = [torch.cat([torch.full_like(p, IGNORE), a])[:MAXLEN] for p, a in zip(prompt, answer)]
-        labels = pad_sequence(label_seqs, batch_first=True, padding_value=IGNORE)
+        ids = [torch.cat([p, a])[:MAXLEN] for p, a in zip(prompt, answer)]
+        labels = [torch.cat([torch.full_like(p, IGNORE), a])[:MAXLEN]  # mask prompt only
+                  for p, a in zip(prompt, answer)]
 
-        # finally shift right once
-        labels = torch.cat(
-            [torch.full((labels.size(0), 1), IGNORE, device=labels.device), labels[:, :-1]],
-            dim=1,
-        )
-        attn_mask = (ids != PAD_ID).long()
-        return {"input_ids": ids, "attention_mask": attn_mask, "labels": labels}
+        ids = pad_sequence(ids, batch_first=True, padding_value=PAD_ID)
+        labels = pad_sequence(labels, batch_first=True, padding_value=IGNORE)
+        attn = (ids != PAD_ID).long()
+        return {"input_ids": ids, "attention_mask": attn, "labels": labels}
 
     def collate_batch(texts):
         texts = [t["text"] if isinstance(t, dict) else t for t in texts]
