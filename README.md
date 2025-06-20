@@ -2,7 +2,7 @@
 
 ## Overview
 
-This is a lightweight, end-to-end implementation of a GPT-style Transformer tailored for next-token prediction on English text. It leverages a curated 1 billion-token RedPajama corpus sample and custom data cleaning to train a model with \~450 million parameters. The system incorporates modern best practices—mixed precision, GPU acceleration, and PyTorch 2.0 compilation—for efficient training and seamless inference.
+This is a lightweight, end-to-end implementation of a GPT-style Transformer tailored for next-token prediction on English text. It leverages a curated corpus sample and custom data cleaning to train a model with \~1.3 billion parameters. The system incorporates modern best practices—mixed precision, GPU acceleration, and PyTorch 2.0 compilation—for efficient training and seamless inference.
 
 ## Features
 
