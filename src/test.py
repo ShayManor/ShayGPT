@@ -1,12 +1,16 @@
+from idlelib.run import flush_stdout
+
 import torch
 from torch import nn
 from transformers import PreTrainedModel, PretrainedConfig, AutoTokenizer
 from typing import Optional, Tuple, Dict, Any
+from safetensors.torch import load_file
+
+from src.tokenizer import tokenizer
 
 
-# --- Your GPTConfig adapted for Hugging Face ---
 class MyGPTConfig(PretrainedConfig):
-    model_type = "my_gpt"  # Necessary for PretrainedConfig
+    model_type = "my_gpt"
 
     def __init__(self,
                  vocab_size=50257,  # Default to GPT-2 vocab size, replace with your actual
@@ -204,11 +208,72 @@ class MyGPTModel(PreTrainedModel):
         )
 
 
-# --- Inference Script ---
 def generate_text(
+        prompt: str,
+        merged_ckpt: str,  # path to gpt_sft_merged_stepXXXX.safetensors
+        cfg_kwargs: Dict[str, Any],  # same hyper-params you used during training
+        *,
+        max_new_tokens: int = 120,
+        temperature: float = 0.8,
+        top_p: float = 0.9,
+        top_k: int = 50,
+        repetition_penalty: float = 1.1,
+        do_sample: bool = True,
+) -> str:
+    """
+    Inference helper for the *merged* model (no LoRA / PEFT needed).
+    Works on CPU/MPS – no CUDA or bits-and-bytes required.
+    """
+
+    # ── build empty model skeleton ───────────────────────────────────────────
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token = tokenizer.eos_token or "<|pad|>"
+
+    cfg_kwargs = cfg_kwargs.copy()  # don't mutate caller's dict
+    cfg_kwargs.update(
+        vocab_size=len(tokenizer),
+        pad_token_id=tokenizer.pad_token_id,
+        bos_token_id=tokenizer.bos_token_id,
+        eos_token_id=tokenizer.eos_token_id,
+    )
+    model = MyGPTModel(MyGPTConfig(**cfg_kwargs))
+    DEVICE = 'cpu'
+    #     "mps" if torch.backends.mps.is_available()
+    #     else "cpu"
+    # )
+    print(f"🔄 loading merged weights from {merged_ckpt} → {DEVICE}")
+    model.load_state_dict(load_file(merged_ckpt, device='cpu'), strict=False)
+    model.to(DEVICE).eval()
+
+    # ── tokenise prompt ──────────────────────────────────────────────────────
+    enc = tokenizer(prompt, return_tensors="pt")
+    input_ids = enc["input_ids"].to(DEVICE)
+    attention_mask = enc["attention_mask"].to(DEVICE)
+
+    # ── generate ─────────────────────────────────────────────────────────────
+    with torch.no_grad():
+        out = model.generate(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            top_k=top_k,
+            repetition_penalty=repetition_penalty,
+            do_sample=do_sample,
+            pad_token_id=tokenizer.pad_token_id,
+        )[0]
+
+    print("\n--- Generated text -------------------------------------------")
+    print(tokenizer.decode(out, skip_special_tokens=True))
+    print("--------------------------------------------------------------")
+    return tokenizer.decode(out, skip_special_tokens=True)
+
+
+def generate_text_old(
         model_weights_path: str,
-        prompt_text: str,
-        config_params: dict,
+        prompt: str,
+        cfg_kwargs: dict,
         max_new_tokens=120,
         do_sample=True,
         top_p=0.9,
@@ -232,18 +297,17 @@ def generate_text(
             tokenizer.add_special_tokens({'pad_token': '[PAD]'})
             # The config_params vocab_size might need to be updated if a token is added
             # config_params['vocab_size'] = len(tokenizer) # This is risky if model wasn't trained with it
-
     # Update config_params with tokenizer specifics if necessary
-    config_params['vocab_size'] = tokenizer.vocab_size
-    config_params['pad_token_id'] = tokenizer.pad_token_id
+    cfg_kwargs['vocab_size'] = tokenizer.vocab_size
+    cfg_kwargs['pad_token_id'] = tokenizer.pad_token_id
     if hasattr(tokenizer, 'bos_token_id') and tokenizer.bos_token_id is not None:
-        config_params['bos_token_id'] = tokenizer.bos_token_id
+        cfg_kwargs['bos_token_id'] = tokenizer.bos_token_id
     if hasattr(tokenizer, 'eos_token_id') and tokenizer.eos_token_id is not None:
-        config_params['eos_token_id'] = tokenizer.eos_token_id
+        cfg_kwargs['eos_token_id'] = tokenizer.eos_token_id
 
     # 2. Initialize Configuration
-    print(f"Initializing model with config: {config_params}")
-    config = MyGPTConfig(**config_params)
+    print(f"Initializing model with config: {cfg_kwargs}")
+    config = MyGPTConfig(**cfg_kwargs)
 
     # 3. Initialize Model
     print("Initializing model structure...")
@@ -299,7 +363,7 @@ def generate_text(
     model.to(device)
     model.eval()
 
-    inputs = tokenizer(prompt_text, return_tensors="pt", padding=True, truncation=True,
+    inputs = tokenizer(prompt, return_tensors="pt", padding=True, truncation=True,
                        max_length=config.max_position_embeddings)
     input_ids = inputs.input_ids.to(device)
     attention_mask = inputs.attention_mask.to(device)
@@ -311,7 +375,7 @@ def generate_text(
     print(f"  top_k: {top_k}")
     print(f"  temperature: {temperature}")
     print(f"  repetition_penalty: {repetition_penalty}\n")
-    print(f"Prompt: \"{prompt_text}\"")
+    print(f"Prompt: \"{prompt}\"")
 
     with torch.no_grad():
         output_sequences = model.generate(
@@ -334,41 +398,30 @@ def generate_text(
 
 
 if __name__ == "__main__":
-    model_config_params = {
-        "vocab_size": 50257,  # Placeholder, will be set by tokenizer
-        "pad_token_id": None,  # Placeholder, will be set by tokenizer
-        "n_layer": 20,
-        "n_head": 20,
-        "d_model": 1280,
-        "dropout": 0.06,
-        "max_position_embeddings": 1024,
-    }
+    ckpt_path = "model.safetensors"
+    cfg = dict(n_layer=20, n_head=20, d_model=1280, vocab_size=50257,
+               dropout=0.06, max_position_embeddings=512)
 
-    model_weights_file = "checkpoint12.pth"
+    SYSTEM = "<|system|>\nYou are a helpful assistant.\n"
+    U_TAG = "<|user|>\n"
+    A_TAG = "<|assistant|>\n"
 
-    prompt = ""
-    gen_params = {
-        "max_new_tokens": 100,
-        "do_sample": True,
-        "top_p": 0.9,
-        "top_k": 50,
-        "temperature": 0.7,
-        "repetition_penalty": 1.1,
-    }
+    prompt = (
+        "For the following story, how much money did Christopher find "
+        "in his pocket?\n\n"
+        "<User> Christopher went outside on his porch this morning. "
+        "When it started to rain, he put on his raincoat. "
+        "He reached in the pocket and found ten dollars. "
+        "He was very surprised!"
+    )
 
-    print(f"Starting generation script with model: {model_weights_file}")
+    full_prompt = f"{SYSTEM}{U_TAG}{prompt}\n{A_TAG}"
 
-    import os
-
-    if not os.path.exists(model_weights_file):
-        print(f"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-        print(f"ERROR: Model weights file not found: {model_weights_file}")
-        print(f"Please update the 'model_weights_file' variable with the correct path.")
-        print(f"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-    else:
-        generate_text(
-            model_weights_path=model_weights_file,
-            prompt_text=prompt,
-            config_params=model_config_params,
-            **gen_params
-        )
+    print(generate_text_old(
+        prompt=full_prompt,
+        model_weights_path='checkpoint150.pth',
+        # merged_ckpt=ckpt_path,
+        cfg_kwargs=cfg,
+        max_new_tokens=80,
+        temperature=0.7,
+    ))

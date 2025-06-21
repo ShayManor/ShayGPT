@@ -151,6 +151,7 @@ run with
 ```commandline
 torchrun --nproc_per_node=2 train.py -- --lr=2e-5 --batch_size=2 --resume=checkpoint_step150000.pth --start=25
 ```
+torchrun --nproc_per_node=4 train.py -- --lr=1e-5 --batch_size=2 --resume=checkpoint_step150000.pth --stage=sft --epochs=2
 
 For questions or contributions, open an issue or submit a pull request. Stay innovative!
 © 2025 Shay Manor
